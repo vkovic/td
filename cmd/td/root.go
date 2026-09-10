@@ -33,9 +33,19 @@ type app struct {
 	cfg   config.Config
 	scope store.ScopeChoice
 
-	// stdout and stderr are held so a subcommand can write outside the printer.
+	// stdout and stderr are held so a subcommand can write outside the printer,
+	// and in is held so --body-file - can be driven by a test.
 	stdout io.Writer
 	stderr io.Writer
+	in     io.Reader
+}
+
+// stdin is where --body-file - reads from.
+func (a *app) stdin() io.Reader {
+	if a.in != nil {
+		return a.in
+	}
+	return os.Stdin
 }
 
 // Provenance is where an item came from, recorded on items the /td plugin
@@ -72,9 +82,16 @@ func (a *app) runEpilogue(steps epilogue.Step, message string) (epilogue.Result,
 	return res, err
 }
 
-// newRootCmd builds the command tree, writing to the given streams.
+// newRootCmd builds the command tree, writing to the given streams and reading
+// standard input from the process.
 func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
-	a := &app{stdout: stdout, stderr: stderr}
+	return newRootCmdIO(stdout, stderr, os.Stdin)
+}
+
+// newRootCmdIO builds the command tree over explicit streams, so a test can
+// drive --body-file - without touching the process's own.
+func newRootCmdIO(stdout, stderr io.Writer, stdin io.Reader) *cobra.Command {
+	a := &app{stdout: stdout, stderr: stderr, in: stdin}
 
 	root := &cobra.Command{
 		Use:   "td",
@@ -108,7 +125,15 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		return a.setup()
 	}
 
-	root.AddCommand(newLinkCmd(a))
+	root.AddCommand(
+		newLinkCmd(a),
+		newAddCmd(a),
+		newEditCmd(a),
+		newDoneCmd(a),
+		newUndoCmd(a),
+		newRemoveCmd(a),
+		newRestoreCmd(a),
+	)
 	return root
 }
 

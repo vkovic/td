@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/vkovic/td/internal/gitx"
 	"github.com/vkovic/td/internal/store"
 )
 
@@ -53,11 +54,70 @@ func newHarness(t *testing.T) *harness {
 // run executes the CLI with the given arguments, returning its streams.
 func (h *harness) run(args ...string) (stdout, stderr string, err error) {
 	h.t.Helper()
+	return h.runStdin("", args...)
+}
+
+// runStdin executes the CLI with the given text on standard input.
+func (h *harness) runStdin(stdin string, args ...string) (stdout, stderr string, err error) {
+	h.t.Helper()
 	var out, errOut bytes.Buffer
-	cmd := newRootCmd(&out, &errOut)
+	cmd := newRootCmdIO(&out, &errOut, strings.NewReader(stdin))
 	cmd.SetArgs(args)
 	err = cmd.Execute()
 	return out.String(), errOut.String(), err
+}
+
+// mustRun executes the CLI and fails the test if the command errors.
+func (h *harness) mustRun(args ...string) string {
+	h.t.Helper()
+	stdout, stderr, err := h.run(args...)
+	if err != nil {
+		h.t.Fatalf("td %s: %v\n%s", strings.Join(args, " "), err, stderr)
+	}
+	return stdout
+}
+
+// mutation runs a mutating command with --json and decodes its result.
+func (h *harness) mutation(args ...string) mutationResult {
+	h.t.Helper()
+	stdout := h.mustRun(append(args, "--json")...)
+	var res mutationResult
+	if err := json.Unmarshal([]byte(stdout), &res); err != nil {
+		h.t.Fatalf("td %s: output is not JSON: %v\n%s", strings.Join(args, " "), err, stdout)
+	}
+	return res
+}
+
+// openStore opens the harness's store for direct assertions.
+func (h *harness) openStore() *store.Store {
+	h.t.Helper()
+	s, err := store.Open(h.root)
+	if err != nil {
+		h.t.Fatalf("store.Open: %v", err)
+	}
+	return s
+}
+
+// commits is how many commits the store's repository holds.
+func (h *harness) commits() int {
+	h.t.Helper()
+	repo := gitx.New(h.root)
+	has, err := repo.HasCommits()
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	if !has {
+		return 0
+	}
+	out, err := repo.Run("rev-list", "--count", "HEAD")
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	n := 0
+	for _, c := range strings.TrimSpace(out) {
+		n = n*10 + int(c-'0')
+	}
+	return n
 }
 
 func TestLinkUsesTheDirectoryName(t *testing.T) {
