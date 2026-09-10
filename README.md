@@ -7,10 +7,27 @@ into a global scope and per-project scopes resolved from a `.td` marker file.
 Every command commits its own change, so the store is always a readable git
 repo you can edit by hand.
 
-## Status
+## Install
 
-Milestone 3 — the Bubble Tea TUI, on top of Milestone 1's binary and its CLI
-subcommands and Milestone 2's `/td` Claude Code plugin.
+```
+go install github.com/vkovic/td/cmd/td@latest
+```
+
+That puts `td` in `$(go env GOPATH)/bin`, which has to be on your `PATH`. From
+a checkout, build it wherever you keep your own binaries instead:
+
+```
+go build -o ~/.local/bin/td ./cmd/td
+```
+
+## Requirements
+
+- macOS or Linux. Windows is not supported: the store lock `td` holds for the
+  duration of every command has no implementation there, and `td` refuses to
+  run rather than let two processes write the store at once.
+- `git` on your `PATH`. The store is a git repository and every command commits
+  its own change.
+- Go 1.24 or later, to install it.
 
 ## Build
 
@@ -18,6 +35,10 @@ subcommands and Milestone 2's `/td` Claude Code plugin.
 go build ./cmd/td
 ./td --version
 ```
+
+`td --version` names the build it came from: the tag for a binary installed
+with `go install`, and the commit for one built from a checkout — with
+`-dirty` when the tree had uncommitted changes.
 
 ## Install the `/td` skill
 

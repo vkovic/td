@@ -29,6 +29,7 @@ Accepted by every subcommand.
 | `--session-name <name>` | Record the Claude Code session name on the item |
 | `--session-id <id>` | Record the Claude Code session id on the item |
 | `--no-epilogue` | Skip the bump, archive, commit and push tail |
+| `--version` | Print `td version <v>` and exit: the tag for a `go install` build, the commit for a build from a checkout |
 
 `--source`, `--session-name` and `--session-id` are stored by `td add` only;
 every other command accepts and ignores them.
