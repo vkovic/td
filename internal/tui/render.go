@@ -88,8 +88,15 @@ func (m *Model) View() string {
 	}
 
 	// The footer is two lines, and is built last because it reports how much of
-	// the list did not fit.
-	const footerLines = 2
+	// the list did not fit. In a pane too short for both it and a line of list,
+	// it is the footer that gives way — the legend first, then the status
+	// line. A pane showing nothing but chrome says nothing about your todos,
+	// and the legend already sheds keys by rank, so shedding itself at the
+	// last extremity is the same rule carried one step further.
+	footerLines := 2
+	for footerLines > 0 && m.height > 0 && m.height-len(head)-len(tail)-footerLines < 1 {
+		footerLines--
+	}
 	body, above, below := m.body(m.capacity(len(head) + len(tail) + footerLines))
 
 	var b strings.Builder
@@ -105,7 +112,7 @@ func (m *Model) View() string {
 	// Rendered a line at a time: Lip Gloss pads every line of a multi-line
 	// block out to the widest one, which would trail the status line with
 	// however many spaces the legend is longer by.
-	for _, line := range strings.Split(m.footer(above, below), "\n") {
+	for _, line := range strings.Split(m.footer(above, below), "\n")[:footerLines] {
 		fmt.Fprintln(&b, m.styles.footer.Render(line))
 	}
 	// No trailing newline. A view that ends with one occupies a line more than

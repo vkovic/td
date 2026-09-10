@@ -134,9 +134,15 @@ func (m *Model) helpView() string {
 	// The overlay is the one screen that must never be the thing you cannot
 	// read: it is where the keys live, including the key that closes it. In a
 	// pane too short for it, it scrolls rather than losing its top.
-	lines[len(lines)-1] = m.styles.footer.Render(m.fit("j/k scrolls · ? or esc closes this"))
-	m.helpTop = min(max(m.helpTop, 0), len(lines)-m.height)
-	return strings.Join(lines[m.helpTop:m.helpTop+m.height], "\n")
+	//
+	// The line saying so is pinned to the bottom rather than scrolled with the
+	// rest. Letting it scroll puts the affordance below the fold for exactly
+	// the reader who needs it — the one in a pane short enough to truncate the
+	// overlay — which is the silent-ending bug this whole family started with.
+	pinned := m.styles.footer.Render(m.fit("j/k scrolls · ? or esc closes this"))
+	body, room := lines[:len(lines)-1], m.height-1
+	m.helpTop = min(max(m.helpTop, 0), len(body)-room)
+	return strings.Join(append(append([]string{}, body[m.helpTop:m.helpTop+room]...), pinned), "\n")
 }
 
 // helpLines is the overlay's content, one line per line on screen, each fitted

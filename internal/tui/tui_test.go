@@ -268,6 +268,32 @@ func TestTheViewNeverExceedsThePaneHeight(t *testing.T) {
 	}
 }
 
+// TestAVeryShortPaneStillShowsAnItem: the list's last line outranks the
+// footer. Flooring the leftover at one line was not enough, because the chrome
+// was subtracted first — at two rows the status line and the legend took both
+// and the list rendered nothing at all, while the footer went on reporting a
+// window whose visible part was off screen.
+func TestAVeryShortPaneStillShowsAnItem(t *testing.T) {
+	s := newStore(t)
+	for i := range 30 {
+		save(t, s, item{id: fmt.Sprintf("a%02d", i), title: fmt.Sprintf("item number %02d", i), updated: ago(i + 1)})
+	}
+
+	m := newModel(t, s)
+	for _, height := range []int{5, 4, 3, 2, 1} {
+		m.Update(tea.WindowSizeMsg{Width: 60, Height: height})
+		view := m.View()
+		if got := strings.Count(view, "\n") + 1; got > height {
+			t.Errorf("at height %d the view is %d lines", height, got)
+		}
+		// item 00 is the newest — ago(i+1) makes i=0 the most recent — so it
+		// is what the cursor opens on and the one line of list must show.
+		if !strings.Contains(plain(view), "item number 00") {
+			t.Errorf("a %d-row pane shows no item at all:\n%s", height, plain(view))
+		}
+	}
+}
+
 // TestTheCursorIsAlwaysOnScreen: the symptom that made the missing window
 // invisible. The pane opened with the cursor on the newest item, above the top
 // edge, so no ❯ appeared anywhere and j looked like it did nothing — it took
@@ -354,6 +380,15 @@ func TestTheHelpOverlayFitsThePane(t *testing.T) {
 		}
 		press(m, "?")
 	}
+
+	// The line that says the overlay scrolls is pinned, not scrolled: letting
+	// it scroll hides the affordance from the only reader who needs it.
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 11})
+	press(m, "?")
+	if got := plain(m.View()); !strings.Contains(got, "j/k scrolls") {
+		t.Errorf("the overlay does not say it scrolls where it has to:\n%s", got)
+	}
+	press(m, "?")
 
 	// And it scrolls, so every key is reachable in a pane too short for it.
 	m.Update(tea.WindowSizeMsg{Width: 60, Height: 8})
