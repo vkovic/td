@@ -73,6 +73,13 @@ done items, which sort after the open ones, most recently completed first.
 carrying **every** tag given, matched case-insensitively, so several `-t` flags
 narrow the list rather than widening it. Aliased as `td list`.
 
+Note that `-t` composes with `--done` rather than overriding it, so a tag
+carried only by completed items returns nothing until `--done` is passed too.
+The TUI's `t` filter deliberately differs here — it narrows both of its
+sections, so a completed match stays visible — because it has no `--done` to
+compose with. The matching itself is identical: both go through
+`store.HasEveryTag`.
+
 **`td show <id>`** prints one item's fields and its full markdown body. It finds
 the item whether it is live, archived, or in the trash.
 
@@ -110,6 +117,20 @@ tail: bump hand-edited items' `updated` timestamps, sweep expired done items
 into `archived/`, `git add -A`, commit if dirty, push if a remote is set. This
 is why the store is always a readable git history and why a file edited by hand
 in an editor is picked up by the *next* `td` command. `--no-epilogue` skips it.
+
+**The last two steps are conditional on config, so never assume a command
+committed.** Commit runs only when `auto_commit` is on and push only when
+`auto_push` is, both defaulting on but either switchable off in `config.toml`
+or by `TD_AUTO_COMMIT` / `TD_AUTO_PUSH`. With `auto_commit` off, `td add`
+returns 0, writes the file, and commits nothing. The archive sweep is skipped
+too whenever the store is already dirty and `auto_commit` is off, since it is
+the one step that moves files and must not do so on top of uncommitted work;
+that skip is reported in `warnings`. Read `epilogue.committed` rather than
+asserting a commit happened.
+
+`td commit` and `td push` override the setting that would skip them — a command
+typed outright does what it says — which is the supported way to flush a store
+running with `auto_commit` off.
 
 `td ls` and `td show` run the epilogue with the push disabled, so a slow remote
 never sits inside a turn.
@@ -174,7 +195,7 @@ after an `rm`.
 | `archived` | array of string | ids the sweep moved to `archived/` |
 | `committed` | bool | whether a commit was made |
 | `message` | string | the commit message; absent when nothing was committed |
-| `pushed` | bool | |
+| `pushed` | bool | the push step ran without failing, which includes the no-op when the store has no remote — not proof anything reached one |
 | `warnings` | array of string | non-fatal problems, e.g. a failed push |
 
 ## Exit codes

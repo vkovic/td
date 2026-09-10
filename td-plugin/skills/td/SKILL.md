@@ -44,6 +44,6 @@ EOF
 
 ## 4. Report
 
-One line per item touched: id, title, scope. Relay any stderr warning verbatim. `td` has already committed and pushed; the turn ends there.
+One line per item touched: id, title, scope. Relay any stderr warning verbatim. `td` commits and pushes on its own, so never offer to do it — but do not claim it did either: `auto_commit` and `auto_push` can be off, and then it did not. The turn ends there.
 
 `references/td-cli.md` holds every command with its flags, the `--json` shapes of `ls`, `show` and the mutating commands, and the exit codes. Open it for a request or flag this file does not show, or before reading a `--json` field.
