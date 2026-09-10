@@ -21,7 +21,7 @@ func writeConfig(t *testing.T, body string) string {
 // shell, so a test asserts on td's own resolution and nothing else.
 func clearEnv(t *testing.T) {
 	t.Helper()
-	for _, name := range []string{EnvDoneTTLDays, EnvAutoCommit, EnvAutoPush, EnvEditor, "EDITOR"} {
+	for _, name := range []string{EnvDoneTTLDays, EnvAutoCommit, EnvAutoPush, EnvEditor, "VISUAL", "EDITOR"} {
 		t.Setenv(name, "")
 		os.Unsetenv(name)
 	}
@@ -267,7 +267,39 @@ func TestEditorFallsBackThroughEnv(t *testing.T) {
 		t.Errorf("Editor = %q, want helix from $EDITOR", got.Editor)
 	}
 
-	// The config file beats $EDITOR.
+	// $VISUAL beats $EDITOR: it is the one that names a full-screen editor.
+	t.Setenv("VISUAL", "kak")
+	got, err = Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Editor != "kak" {
+		t.Errorf("Editor = %q, want kak from $VISUAL", got.Editor)
+	}
+
+	// A whitespace-only $VISUAL is unset, like every other setting here.
+	t.Setenv("VISUAL", "   ")
+	got, err = Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Editor != "helix" {
+		t.Errorf("Editor = %q, want helix: a blank $VISUAL names no editor", got.Editor)
+	}
+
+	// $VISUAL alone, with no $EDITOR behind it.
+	t.Setenv("VISUAL", "kak")
+	t.Setenv("EDITOR", "")
+	got, err = Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Editor != "kak" {
+		t.Errorf("Editor = %q, want kak from $VISUAL with $EDITOR unset", got.Editor)
+	}
+	t.Setenv("EDITOR", "helix")
+
+	// The config file beats both environment editors.
 	root = writeConfig(t, `editor = "vim"`+"\n")
 	got, err = Load(root)
 	if err != nil {
@@ -277,7 +309,8 @@ func TestEditorFallsBackThroughEnv(t *testing.T) {
 		t.Errorf("Editor = %q, want vim from the config file", got.Editor)
 	}
 
-	// TD_EDITOR beats both.
+	// TD_EDITOR beats all of them, the way every TD_ variable overrides the
+	// file it shares a key with.
 	t.Setenv(EnvEditor, "nano")
 	got, err = Load(root)
 	if err != nil {

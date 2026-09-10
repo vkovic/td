@@ -25,8 +25,8 @@ const (
 	EnvEditor      = "TD_EDITOR"
 )
 
-// fallbackEditor is used when neither the config, TD_EDITOR, nor EDITOR names
-// one — vi is the editor POSIX guarantees is present.
+// fallbackEditor is used when none of the config, TD_EDITOR, VISUAL or EDITOR
+// names one — vi is the editor POSIX guarantees is present.
 const fallbackEditor = "vi"
 
 // Config is td's resolved settings.
@@ -166,14 +166,23 @@ func setTTL(cfg *Config, days int, source string) error {
 	return nil
 }
 
-// resolveEditor falls back from the configured editor to $EDITOR and finally to
-// vi, so opening an item's body always has something to run.
+// resolveEditor falls back from the configured editor to $VISUAL, then
+// $EDITOR, and finally to vi, so opening an item's body always has something
+// to run. $VISUAL comes first of the two because it is the one that names a
+// full-screen editor, which is all td ever opens; a $EDITOR set to a line
+// editor is the fallback, not the preference.
+//
+// The configured editor is whatever config.toml and TD_EDITOR settled on
+// before this runs, so the whole chain is TD_EDITOR, config.toml, $VISUAL,
+// $EDITOR, vi.
 func resolveEditor(configured string) string {
 	if strings.TrimSpace(configured) != "" {
 		return configured
 	}
-	if v := strings.TrimSpace(os.Getenv("EDITOR")); v != "" {
-		return v
+	for _, name := range []string{"VISUAL", "EDITOR"} {
+		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+			return v
+		}
 	}
 	return fallbackEditor
 }

@@ -95,9 +95,12 @@ func TestReadmeDocumentsNoKeyThatDoesNothing(t *testing.T) {
 	}
 }
 
-// TestReadmeDocumentsTheEditorChainAsItIs: INTENT §8 says config → $VISUAL →
-// $EDITOR → vi, and the code does not read $VISUAL. The README has to match the
-// code, since it is what someone checks before assuming the INTENT is current.
+// TestReadmeDocumentsTheEditorChainAsItIs: the README is what someone checks
+// before assuming the INTENT is current, so it has to name every link in the
+// chain config.Load actually walks, in the order it walks them. Asserting the
+// order and not just the names is deliberate: the README spent three
+// milestones claiming config.toml beat TD_EDITOR, which is backwards, and a
+// membership-only test never noticed.
 func TestReadmeDocumentsTheEditorChainAsItIs(t *testing.T) {
 	text, err := os.ReadFile("../../README.md")
 	if err != nil {
@@ -105,20 +108,31 @@ func TestReadmeDocumentsTheEditorChainAsItIs(t *testing.T) {
 	}
 	readme := string(text)
 
-	for _, want := range []string{config.EnvEditor, "$EDITOR", "`vi`", "`$VISUAL` is not"} {
-		if !strings.Contains(readme, want) {
-			t.Errorf("the README does not document %q in the editor chain", want)
+	chain := []string{config.EnvEditor, "`editor`", "$VISUAL", "$EDITOR", "`vi`"}
+	prev := -1
+	for _, link := range chain {
+		at := strings.LastIndex(readme, link)
+		if at < 0 {
+			t.Errorf("the README does not document %q in the editor chain", link)
+			continue
 		}
+		if at < prev {
+			t.Errorf("the README documents %q out of order; the chain is %s", link, strings.Join(chain, " then "))
+		}
+		prev = at
 	}
 
-	// And the chain really is what the README claims: nothing in the config
-	// package reads $VISUAL.
+	// And the chain really is what the README claims: the config package reads
+	// $VISUAL, and reads it before $EDITOR.
 	src, err := os.ReadFile("../config/config.go")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(src), "VISUAL") {
-		t.Error("config reads $VISUAL, so the README's note that it does not is stale")
+	visual, editor := strings.Index(string(src), `"VISUAL"`), strings.Index(string(src), `"EDITOR"`)
+	if visual < 0 {
+		t.Error("config does not read $VISUAL, so the README's chain is stale")
+	} else if editor >= 0 && editor < visual {
+		t.Error("config reads $EDITOR before $VISUAL, the opposite of the documented chain")
 	}
 }
 

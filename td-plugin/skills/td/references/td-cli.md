@@ -217,7 +217,8 @@ id, so a longer prefix or the full id can be retried straight away.
 `TD_DONE_TTL_DAYS`, `TD_AUTO_COMMIT`, `TD_AUTO_PUSH`, `TD_EDITOR`. `TD_ROOT`
 relocates the store itself, which is what tests use.
 
-The editor is resolved `config.toml` → `TD_EDITOR` → `$EDITOR` → `vi`
-(`internal/config/config.go:171-179`). `$VISUAL` is **not** consulted, despite
-INTENT §8 listing it. This affects the TUI and hand-editing only; nothing the
-skill runs opens an editor.
+The editor is resolved `TD_EDITOR` → `config.toml` → `$VISUAL` → `$EDITOR` →
+`vi` (`internal/config/config.go:153-155` for the override,
+`:169-188` for the fallbacks), the environment variable beating the file as it
+does for every other key. This affects the TUI and hand-editing
+only; nothing the skill runs opens an editor.

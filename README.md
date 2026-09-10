@@ -100,12 +100,13 @@ environment variable.
 | `auto_push`      | `true`  | `TD_AUTO_PUSH`   |
 | `editor`         | unset   | `TD_EDITOR`      |
 
-The editor is resolved in that order: `editor` in `config.toml`, then
-`TD_EDITOR`, then `$EDITOR`, and `vi` if none of them is set. `$VISUAL` is not
-consulted. The setting may carry arguments — `editor = "code --wait"` and
-`emacsclient -nw` both work — and is split into words the way a shell splits a
-command line, honouring quotes and backslashes. Nothing is expanded, so an
-editor setting cannot run a substitution.
+The editor is resolved in that order: `TD_EDITOR`, then `editor` in
+`config.toml`, then `$VISUAL`, then `$EDITOR`, and `vi` if none of them is set.
+The environment variable beating the file is the rule every key here follows,
+not a quirk of this one. The setting may carry arguments — `editor = "code
+--wait"` and `emacsclient -nw` both work — and is split into words the way a
+shell splits a command line, honouring quotes and backslashes. Nothing is
+expanded, so an editor setting cannot run a substitution.
 
 ## License
 
