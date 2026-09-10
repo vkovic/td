@@ -65,10 +65,12 @@ into the title. `-b` takes a markdown body
 inline; `--body-file -` reads it from standard input, which is how a long or
 multi-line body is passed safely. `-t` is repeatable.
 
-**`td ls`** lists open items, most recently updated first. `--done` includes
-done items, which sort after the open ones by completion time. `--all` merges
-every scope and adds a scope column. `-t` narrows to items carrying every tag
-given. Aliased as `td list`.
+**`td ls`** lists open items, most recently updated first, with `created` and
+then `id` breaking a tie so the order is stable run to run. `--done` includes
+done items, which sort after the open ones, most recently completed first.
+`--all` merges every scope and adds a scope column. `-t` narrows to items
+carrying **every** tag given, matched case-insensitively, so several `-t` flags
+narrow the list rather than widening it. Aliased as `td list`.
 
 **`td show <id>`** prints one item's fields and its full markdown body. It finds
 the item whether it is live, archived, or in the trash.
@@ -136,10 +138,10 @@ and no epilogue.
 | `tags` | array of string | `[]` when untagged, never absent |
 | `due` | string | `YYYY-MM-DD`; **absent** when unset |
 | `created` | string | RFC 3339 UTC |
-| `updated` | string | RFC 3339 UTC; what `ls` orders by |
+| `updated` | string | RFC 3339 UTC; the primary `ls` sort key |
 | `done_at` | string or null | `null` when open — this is the done flag of record |
 | `done` | bool | Convenience mirror of `done_at != null` |
-| `source` | string | `claude`, `tui`, `cli`; **absent** when unset |
+| `source` | string | `claude`, `tui`, `cli`; who *created* the item, never who last touched it, since only `td add` writes it; **absent** when unset |
 | `context` | string | cwd at creation; **absent** when unset, which today is always |
 | `claude_session_name` | string | **absent** when unset |
 | `claude_session_id` | string | **absent** when unset |
