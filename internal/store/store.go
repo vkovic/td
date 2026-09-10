@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/vkovic/td/internal/gitx"
 )
 
 // EnvRoot overrides the store's location, which is otherwise ~/.td. Tests and
@@ -146,21 +147,12 @@ const defaultConfigTemplate = `# td configuration. Every key is optional; the co
 # editor = ""
 `
 
-// ensureRepo runs git init when root is not already inside a repository.
-//
-// TODO(step 7): call internal/gitx once it exists, so every git invocation in
-// td goes through one place.
+// Repo is the store's git repository.
+func (s *Store) Repo() *gitx.Repo { return gitx.New(s.root) }
+
+// ensureRepo creates the store's git repository when it is not there yet.
 func (s *Store) ensureRepo() error {
-	if _, err := os.Stat(filepath.Join(s.root, ".git")); err == nil {
-		return nil
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("checking for a git repository in %s: %w", s.root, err)
-	}
-	cmd := exec.Command("git", "-C", s.root, "init", "--quiet")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git init in %s: %w: %s", s.root, err, strings.TrimSpace(string(out)))
-	}
-	return nil
+	return s.Repo().Init()
 }
 
 // Dir is the directory holding a scope's items in the given area.
