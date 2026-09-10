@@ -30,11 +30,11 @@ Run every command from the current directory as-is: the `.td` marker decides pro
 
 ## 3. Shape an add
 
-- **Title** - one imperative line; the words after `td add` are the title, quoting optional.
+- **Title** - one imperative line, **always single-quoted**. `td` is happy with bare words, but the *shell* mangles an unquoted title before `td` ever sees it: a `$` or a backtick silently stores the wrong text, an apostrophe is a syntax error. A title cannot begin with `-`; reword it.
 - **Body** - the context that dies in scrollback otherwise: why, the `file:line` it concerns, what was decided. Markdown over stdin:
 
 ```bash
-td add Retry the fetcher on 429 --source claude --session-id ${CLAUDE_SESSION_ID} --session-name fetcher-retry --body-file - <<'EOF'
+td add 'Retry the fetcher on 429' --source claude --session-id ${CLAUDE_SESSION_ID} --session-name fetcher-retry --body-file - <<'EOF'
 `internal/fetcher/client.go:88` returns on 429 without backoff; add retry with jitter.
 EOF
 ```
