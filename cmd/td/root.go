@@ -102,9 +102,14 @@ func newRootCmdIO(stdout, stderr io.Writer, stdin io.Reader) *cobra.Command {
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		// With no subcommand there is nothing to do yet: the TUI is a later
-		// milestone, so print the help and leave.
+		// With no subcommand, a terminal gets the TUI and anything else gets
+		// the help. Bare td is the everyday way into the pane, but it is also
+		// what a script or a Claude Code Bash call runs, and neither of those
+		// can drive a full screen program.
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if interactive() {
+				return a.ui()
+			}
 			return cmd.Help()
 		},
 		// Cobra's own handling of an unrecognized subcommand produces a plain
@@ -144,6 +149,7 @@ func newRootCmdIO(stdout, stderr io.Writer, stdin io.Reader) *cobra.Command {
 		newRestoreCmd(a),
 		newLsCmd(a),
 		newShowCmd(a),
+		newUICmd(a),
 	)
 	root.AddCommand(newMaintenanceCmds(a)...)
 

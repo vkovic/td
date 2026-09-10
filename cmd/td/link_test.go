@@ -236,14 +236,24 @@ func TestLinkThenScopeResolves(t *testing.T) {
 	}
 }
 
+// TestRootWithNoArgsPrintsHelp pins the non-terminal branch of bare td. A
+// terminal gets the TUI instead, but a test harness, a pipe and a Claude Code
+// Bash call are all non-terminals, so this is the path everything but a person
+// at a keyboard takes.
 func TestRootWithNoArgsPrintsHelp(t *testing.T) {
 	h := newHarness(t)
+	if interactive() {
+		t.Skip("the test process is attached to a terminal, so bare td would open the TUI")
+	}
 	stdout, _, err := h.run()
 	if err != nil {
 		t.Fatalf("td: %v", err)
 	}
 	if !strings.Contains(stdout, "Usage:") || !strings.Contains(stdout, "link") {
 		t.Errorf("bare td printed %q, want the help", stdout)
+	}
+	if !strings.Contains(stdout, "ui") {
+		t.Errorf("the help does not list the ui command: %q", stdout)
 	}
 }
 
