@@ -213,8 +213,12 @@ func TestPushWithNoRemoteIsANoOp(t *testing.T) {
 	if _, err := r.CommitAll("add a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Push(); err != nil {
+	pushed, err := r.Push()
+	if err != nil {
 		t.Errorf("Push() with no remote = %v, want nil", err)
+	}
+	if pushed {
+		t.Error("Push() with no remote reported a push, want false: there was nowhere to push to")
 	}
 }
 
@@ -234,8 +238,12 @@ func TestPushSetsUpstreamThenPushesAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The first push has no upstream to follow and must set one.
-	if err := r.Push(); err != nil {
+	pushed, err := r.Push()
+	if err != nil {
 		t.Fatalf("first Push: %v", err)
+	}
+	if !pushed {
+		t.Error("the first Push reported no push, want true")
 	}
 	remote := New(bare)
 	if got := commitCount(t, remote); got != 1 {
@@ -247,8 +255,12 @@ func TestPushSetsUpstreamThenPushesAgain(t *testing.T) {
 	if _, err := r.CommitAll("add b"); err != nil {
 		t.Fatal(err)
 	}
-	if err := r.Push(); err != nil {
+	pushed, err = r.Push()
+	if err != nil {
 		t.Fatalf("second Push: %v", err)
+	}
+	if !pushed {
+		t.Error("the second Push reported no push, want true")
 	}
 	if got := commitCount(t, remote); got != 2 {
 		t.Errorf("the remote holds %d commits after the second push, want 2", got)
@@ -264,9 +276,12 @@ func TestPushFailureIsReported(t *testing.T) {
 	if _, err := r.CommitAll("add a"); err != nil {
 		t.Fatal(err)
 	}
-	err := r.Push()
+	pushed, err := r.Push()
 	if err == nil {
 		t.Fatal("Push to a missing remote = nil, want an error for the caller to warn about")
+	}
+	if pushed {
+		t.Error("a failed Push reported a push, want false")
 	}
 	var runErr *RunError
 	if !errors.As(err, &runErr) {

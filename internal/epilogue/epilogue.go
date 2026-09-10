@@ -60,7 +60,8 @@ type Result struct {
 	Committed bool
 	// Message is the commit message used, when one was.
 	Message string
-	// Pushed reports whether a push succeeded.
+	// Pushed reports whether a push reached a remote. A store with no remote
+	// pushes nothing and reports false.
 	Pushed bool
 	// Warnings are failures that must not fail the command: a push that could
 	// not reach its remote, an item file that will not parse, a sweep skipped
@@ -127,11 +128,12 @@ func Run(opts Options) (Result, error) {
 		}
 	}
 	if steps.Has(StepPush) && opts.Config.AutoPush {
-		if err := repo.Push(); err != nil {
+		pushed, err := repo.Push()
+		if err != nil {
 			// A store that could not reach its remote is still a correct store.
 			res.Warnings = append(res.Warnings, fmt.Errorf("push failed: %w", err))
 		} else {
-			res.Pushed = true
+			res.Pushed = pushed
 		}
 	}
 	return res, nil

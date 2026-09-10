@@ -372,11 +372,6 @@ func (m *Model) afterEditor(msg editorFinishedMsg) tea.Cmd {
 type epilogueDoneMsg struct {
 	res epilogue.Result
 	err error
-
-	// hasRemote is whether the store had somewhere to push to. Push reports
-	// success for a store with no remote, since doing nothing succeeded, so
-	// the status line has to ask the repository rather than trust the result.
-	hasRemote bool
 }
 
 // runEpilogue performs the shared tail off the event loop.
@@ -403,10 +398,7 @@ func (m *Model) runEpilogueWith(cfg config.Config, message string) tea.Cmd {
 			Message: message,
 			Now:     now,
 		})
-		// Asked here rather than in the handler: it shells out to git, and the
-		// event loop is the one goroutine that must not wait on anything.
-		hasRemote, _ := st.Repo().HasRemote()
-		return epilogueDoneMsg{res: res, err: err, hasRemote: hasRemote}
+		return epilogueDoneMsg{res: res, err: err}
 	}
 }
 
@@ -419,7 +411,7 @@ func (m *Model) afterEpilogue(msg epilogueDoneMsg) {
 		return
 	}
 	m.err = nil
-	m.status = describe(msg.res, msg.hasRemote)
+	m.status = describe(msg.res)
 	// The events this run just produced are still in flight. They will still
 	// reload the list; they will not be reported as somebody else's doing.
 	m.selfWriteUntil = m.now().Add(selfWriteFor)

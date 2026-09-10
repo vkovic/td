@@ -220,15 +220,14 @@ func TestRefreshRecordsAHandEdit(t *testing.T) {
 	}
 }
 
-// TestStatusDoesNotClaimAPushWithoutARemote: Push reports success for a store
-// with nowhere to push, so the status line asks the repository instead.
+// TestStatusDoesNotClaimAPushWithoutARemote: a store with nowhere to push
+// comes back with Pushed false, and the status line says only what happened.
 func TestStatusDoesNotClaimAPushWithoutARemote(t *testing.T) {
-	res := epilogue.Result{Committed: true, Pushed: true}
-	if got := describe(res, false); strings.Contains(got, "pushed") {
-		t.Errorf("the status is %q, want no push claimed without a remote", got)
+	if got := describe(epilogue.Result{Committed: true}); strings.Contains(got, "pushed") {
+		t.Errorf("the status is %q, want no push claimed for a result that pushed nothing", got)
 	}
-	if got := describe(res, true); !strings.Contains(got, "pushed") {
-		t.Errorf("the status is %q, want the push reported when there is a remote", got)
+	if got := describe(epilogue.Result{Committed: true, Pushed: true}); !strings.Contains(got, "pushed") {
+		t.Errorf("the status is %q, want the push reported when one happened", got)
 	}
 }
 

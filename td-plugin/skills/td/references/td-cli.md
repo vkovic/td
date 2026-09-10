@@ -195,7 +195,7 @@ after an `rm`.
 | `archived` | array of string | ids the sweep moved to `archived/` |
 | `committed` | bool | whether a commit was made |
 | `message` | string | the commit message; absent when nothing was committed |
-| `pushed` | bool | the push step ran without failing, which includes the no-op when the store has no remote — not proof anything reached one |
+| `pushed` | bool | a push reached the remote; false when the store has no remote, when `auto_push` is off, and when the push failed (see `warnings`) |
 | `warnings` | array of string | non-fatal problems, e.g. a failed push |
 
 ## Exit codes

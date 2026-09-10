@@ -407,6 +407,59 @@ func TestStepsAreAddressable(t *testing.T) {
 	}
 }
 
+// TestPushWithNoRemoteReportsNoPush: auto_push on a store that has no remote
+// is not a failure and not a push. Reporting it as a push is a claim about a
+// remote that does not exist, which is what --json and the pane would print.
+func TestPushWithNoRemoteReportsNoPush(t *testing.T) {
+	s := newStore(t)
+	cfg := defaultConfig()
+	cfg.AutoPush = true
+	add(t, s, store.Global, "aaaaaaa1", "One", fixedNow, nil)
+
+	res, err := Run(Options{Store: s, Config: cfg, Message: "td: add One", Now: at(fixedNow)})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if res.Pushed {
+		t.Error("Pushed = true for a store with no remote")
+	}
+	if !res.Committed {
+		t.Error("Committed = false, want the commit to have happened")
+	}
+	if len(res.Warnings) != 0 {
+		t.Errorf("warnings = %v, want none: having no remote is not a failure", res.Warnings)
+	}
+}
+
+// TestPushToARemoteReportsAPush is the other half: a reachable remote gives
+// Pushed true, so the field distinguishes the two cases rather than being
+// constantly true.
+func TestPushToARemoteReportsAPush(t *testing.T) {
+	s := newStore(t)
+	cfg := defaultConfig()
+	cfg.AutoPush = true
+
+	bare := filepath.Join(t.TempDir(), "remote.git")
+	if _, err := run(t, t.TempDir(), "init", "--bare", "--quiet", bare); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := run(t, s.Root(), "remote", "add", "origin", bare); err != nil {
+		t.Fatal(err)
+	}
+	add(t, s, store.Global, "aaaaaaa1", "One", fixedNow, nil)
+
+	res, err := Run(Options{Store: s, Config: cfg, Message: "td: add One", Now: at(fixedNow)})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !res.Pushed {
+		t.Errorf("Pushed = false against a reachable remote, warnings %v", res.Warnings)
+	}
+	if got := commitCount(t, gitx.New(bare)); got != 1 {
+		t.Errorf("the remote holds %d commits, want 1", got)
+	}
+}
+
 func TestPushWarnsRatherThanFails(t *testing.T) {
 	s := newStore(t)
 	cfg := defaultConfig()

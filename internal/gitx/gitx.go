@@ -98,33 +98,40 @@ func (r *Repo) HasRemote() (bool, error) {
 }
 
 // Push sends the current branch to its remote, setting the upstream on the
-// first push. A repository with no remote is a no-op and not an error.
+// first push, and reports whether a push actually reached a remote. A
+// repository with no remote pushes nothing and returns false, the way CommitAll
+// returns false for a clean tree, so a caller never claims a push that had
+// nowhere to go.
 //
 // A push that fails is returned as an error, but callers must treat it as a
 // warning: a store that could not reach its remote is still a correct store,
 // and td must not fail a command over it.
-func (r *Repo) Push() error {
+func (r *Repo) Push() (bool, error) {
 	has, err := r.HasRemote()
 	if err != nil || !has {
-		return err
+		return false, err
 	}
 	if upstream, err := r.hasUpstream(); err != nil {
-		return err
+		return false, err
 	} else if upstream {
-		_, err = r.run("push")
-		return err
+		if _, err := r.run("push"); err != nil {
+			return false, err
+		}
+		return true, nil
 	}
 
 	remote, err := r.defaultRemote()
 	if err != nil {
-		return err
+		return false, err
 	}
 	branch, err := r.CurrentBranch()
 	if err != nil {
-		return err
+		return false, err
 	}
-	_, err = r.run("push", "--set-upstream", remote, branch)
-	return err
+	if _, err := r.run("push", "--set-upstream", remote, branch); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // CurrentBranch returns the checked out branch name.

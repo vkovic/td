@@ -53,10 +53,9 @@ func (p *prompt) backspace() {
 }
 
 // describe says what an epilogue run did, in the few words the footer has room
-// for. It reports a push only when the store has somewhere to push to: a run
-// with no remote reports Pushed as true, since doing nothing succeeded, and
-// saying "pushed" there would be a claim about a remote that does not exist.
-func describe(res epilogue.Result, hasRemote bool) string {
+// for. Pushed already means a push reached a remote, so a run with nowhere to
+// push says nothing about pushing.
+func describe(res epilogue.Result) string {
 	var parts []string
 	if n := len(res.Bumped); n > 0 {
 		parts = append(parts, plural(n, "hand edit", "hand edits")+" recorded")
@@ -67,7 +66,7 @@ func describe(res epilogue.Result, hasRemote bool) string {
 	if res.Committed {
 		parts = append(parts, "committed")
 	}
-	if res.Pushed && hasRemote {
+	if res.Pushed {
 		parts = append(parts, "pushed")
 	}
 	if len(parts) == 0 {
