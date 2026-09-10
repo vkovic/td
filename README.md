@@ -106,3 +106,7 @@ consulted. The setting may carry arguments — `editor = "code --wait"` and
 `emacsclient -nw` both work — and is split into words the way a shell splits a
 command line, honouring quotes and backslashes. Nothing is expanded, so an
 editor setting cannot run a substitution.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
