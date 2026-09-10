@@ -24,7 +24,7 @@ Systems:
 - The picker windows its rows and pins a closing hint at the bottom when it is taller than the pane, exactly as the help overlay does.
 - A marker or `-p` flag can name a project whose directory does not exist yet. That scope is still a row in the picker, in name order among the projects, so the cursor has a list to open on and an add still goes where `td add` would put it.
 - The title and tag filters carry over a pick unchanged, the way they survive every other reload today. `esc` clears them, as it does now.
-- The picker lists exactly what `Store.Scopes()` returns plus the merged view: global, every scope, then every project directory by name, including a project with nothing open.
+- The picker lists what `Store.Scopes()` returns plus the merged view, and the current scope when it has no directory yet: global, every scope, then every project by name, including a project with nothing open.
 - The picker is an overlay in the same style as the help overlay: `j`/`k` or arrows move, enter picks, esc cancels. It fits a 60 column pane and windows its rows the way the help overlay does.
 - An add while a picked project is on screen files into that project, the same rule the global view follows today. The merged view keeps filing into the directory's own scope.
 - The picked project is view state, like the title and tag filters. A watcher refresh keeps it. A restart opens on the marker's scope, as today. Nothing is persisted.
