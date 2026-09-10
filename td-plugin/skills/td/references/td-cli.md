@@ -49,6 +49,7 @@ td bump
 td archive
 td commit
 td push
+td ui
 ```
 
 **`td link [name]`** writes a `.td` marker in the current directory naming a
@@ -87,7 +88,14 @@ purged; **`td restore`** brings them back from `deleted/` or `archived/`.
 their own step of the epilogue, on demand. A caller capturing todos has no
 reason to run any of them — the epilogue already does.
 
-Not available yet: `td ui` (the TUI) is Milestone 3. `td commit` takes no `-m`.
+**`td ui`** opens the terminal interface, and is what bare `td` runs **in a
+terminal**. Anywhere else — a pipe, a script, a Claude Code Bash call — bare
+`td` prints help instead, because the branch tests whether stdin and stdout are
+terminals. A caller like this skill therefore never reaches the TUI, and should
+never invoke `td ui`: it takes over the terminal and does not return output to
+parse.
+
+`td commit` takes no `-m`.
 
 ## Ids
 
@@ -187,3 +195,8 @@ id, so a longer prefix or the full id can be retried straight away.
 `~/.td/config.toml`, every key overridable by an environment variable:
 `TD_DONE_TTL_DAYS`, `TD_AUTO_COMMIT`, `TD_AUTO_PUSH`, `TD_EDITOR`. `TD_ROOT`
 relocates the store itself, which is what tests use.
+
+The editor is resolved `config.toml` → `TD_EDITOR` → `$EDITOR` → `vi`
+(`internal/config/config.go:171-179`). `$VISUAL` is **not** consulted, despite
+INTENT §8 listing it. This affects the TUI and hand-editing only; nothing the
+skill runs opens an editor.
