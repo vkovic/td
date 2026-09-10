@@ -78,7 +78,7 @@ func TestItemRoundTrip(t *testing.T) {
 id: 7k3m9q2x
 title: Wire the epilogue
 tags: [cli, epilogue]
-due: "2026-09-30"
+due: 2026-09-30
 created: 2026-09-01T08:00:00Z
 updated: 2026-09-09T17:24:00Z
 done_at: 2026-09-09T18:00:00Z
@@ -120,6 +120,23 @@ Note.
 `,
 		},
 		{
+			// The shape a person types: no tags, no done_at, a bare due, and
+			// priority between title and created. td rewrote all four the
+			// first time it touched such a file.
+			name: "a hand-written file",
+			src: `---
+id: 01hx2b9f
+title: Buy milk
+due: 2026-09-30
+priority: high
+created: 2026-09-01T08:00:00Z
+updated: 2026-09-01T08:00:00Z
+---
+
+Note.
+`,
+		},
+		{
 			name: "title needing quotes",
 			src: `---
 id: 01hx2b9f
@@ -149,6 +166,97 @@ done_at:
 	}
 }
 
+// TestHandWrittenFileGainsOnlyTheKeyItNeeds: setting a field whose key the
+// file does not have adds that one line, in the place §7 puts it, and leaves
+// every other line where it was. The file is the user's; td is a guest in it.
+func TestHandWrittenFileGainsOnlyTheKeyItNeeds(t *testing.T) {
+	src := `---
+id: 01hx2b9f
+title: Buy milk
+due: 2026-09-30
+priority: high
+created: 2026-09-01T08:00:00Z
+updated: 2026-09-01T08:00:00Z
+---
+
+Note.
+`
+	it, err := ParseItem([]byte(src))
+	if err != nil {
+		t.Fatalf("ParseItem: %v", err)
+	}
+	done := time.Date(2026, 9, 11, 9, 0, 0, 0, time.UTC)
+	it.DoneAt = &done
+
+	out, err := it.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	want := `---
+id: 01hx2b9f
+title: Buy milk
+due: 2026-09-30
+priority: high
+created: 2026-09-01T08:00:00Z
+updated: 2026-09-01T08:00:00Z
+done_at: 2026-09-11T09:00:00Z
+---
+
+Note.
+`
+	if string(out) != want {
+		t.Errorf("marking a hand-written item done rewrote more than done_at\n--- got ---\n%s\n--- want ---\n%s", out, want)
+	}
+}
+
+// TestTagsGainedByAHandWrittenFileLandInOrder: tags belongs between title and
+// due, and the file has neither a tags line nor an appetite for its keys being
+// shuffled.
+func TestTagsGainedByAHandWrittenFileLandInOrder(t *testing.T) {
+	it, err := ParseItem([]byte("---\nid: a\ntitle: t\ndue: 2026-09-30\nnotes: mine\n---\n"))
+	if err != nil {
+		t.Fatalf("ParseItem: %v", err)
+	}
+	it.Tags = []string{"errand"}
+
+	out, err := it.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	want := "---\nid: a\ntitle: t\ntags: [errand]\ndue: 2026-09-30\nnotes: mine\n---\n"
+	if string(out) != want {
+		t.Errorf("tags landed in the wrong place\n--- got ---\n%s\n--- want ---\n%s", out, want)
+	}
+}
+
+// TestItemTdCreatedStillCarriesTheSkeleton: an item td made has no file to
+// take its shape from, so it gets the full §7 skeleton — including the empty
+// tags and done_at lines that show a person what the file can hold.
+func TestItemTdCreatedStillCarriesTheSkeleton(t *testing.T) {
+	it := &Item{
+		ID:      "01hx2b9f",
+		Title:   "Buy milk",
+		Created: time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC),
+		Updated: time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC),
+	}
+	out, err := it.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	want := `---
+id: 01hx2b9f
+title: Buy milk
+tags: []
+created: 2026-09-01T08:00:00Z
+updated: 2026-09-01T08:00:00Z
+done_at:
+---
+`
+	if string(out) != want {
+		t.Errorf("a td-created item is no longer the §7 skeleton\n--- got ---\n%s\n--- want ---\n%s", out, want)
+	}
+}
+
 func TestItemUnknownKeysPreserved(t *testing.T) {
 	src := `---
 id: 01hx2b9f
@@ -165,8 +273,8 @@ estimate: 3
 	if err != nil {
 		t.Fatalf("ParseItem: %v", err)
 	}
-	if len(it.residue) != 4 {
-		t.Fatalf("residue holds %d nodes, want 4 (two key/value pairs)", len(it.residue))
+	if it.parsed == nil {
+		t.Fatal("ParseItem kept no mapping, so a rewrite cannot preserve the file's shape")
 	}
 	// A rewrite after a field change must still carry the unknown keys.
 	it.Title = "Buy oat milk"

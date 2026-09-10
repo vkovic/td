@@ -76,16 +76,19 @@ type Item struct {
 	// and at most one trailing newline.
 	Body string
 
-	// residue holds unrecognized frontmatter as alternating key/value nodes, in
-	// the order they were read. Marshal re-emits them after the known keys.
-	residue []*yaml.Node
+	// parsed is the frontmatter mapping this item was read from, kept whole so
+	// a rewrite edits the file's own shape rather than rebuilding it: keys
+	// stay where their author put them, keys td does not recognize are never
+	// moved, and a key the file never had is not invented. An item td made
+	// itself has none, and is written in the canonical shape instead.
+	parsed *yaml.Node
 }
 
 // Done reports whether the item has been completed.
 func (it *Item) Done() bool { return it.DoneAt != nil }
 
 // knownKeys are the frontmatter keys Item decodes into typed fields. Everything
-// else goes to residue.
+// else is left alone in the parsed mapping.
 var knownKeys = map[string]bool{
 	"id": true, "title": true, "tags": true, "due": true,
 	"created": true, "updated": true, "done_at": true,
@@ -121,11 +124,11 @@ func ParseItem(b []byte) (*Item, error) {
 	if root.Kind != yaml.MappingNode {
 		return nil, errors.New("item frontmatter must be a YAML mapping")
 	}
+	it.parsed = root
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		key, val := root.Content[i], root.Content[i+1]
 		if !knownKeys[key.Value] {
-			it.residue = append(it.residue, key, val)
-			continue
+			continue // unrecognized, and left exactly where it was
 		}
 		if err := it.decodeField(key.Value, val); err != nil {
 			return nil, err
@@ -217,9 +220,57 @@ func decodeTime(n *yaml.Node, dst *time.Time) error {
 	return nil
 }
 
-// Marshal renders the item back to file bytes in td's canonical shape: known
-// keys in a fixed order, unrecognized keys after them, then the body.
+// Marshal renders the item back to file bytes.
+//
+// An item read from a file is written back through its own parsed mapping, so
+// a file somebody wrote by hand keeps its shape: its keys stay in its order,
+// keys td does not recognize are untouched, and an optional key the file never
+// had is added only once it has something to say. An item td created has no
+// mapping to start from and is written in the canonical §7 shape.
 func (it *Item) Marshal() ([]byte, error) {
+	m, err := it.frontmatter()
+	if err != nil {
+		return nil, err
+	}
+
+	var buf bytes.Buffer
+	buf.WriteString(fence + "\n")
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(m); err != nil {
+		return nil, fmt.Errorf("encoding item frontmatter: %w", err)
+	}
+	if err := enc.Close(); err != nil {
+		return nil, fmt.Errorf("encoding item frontmatter: %w", err)
+	}
+	buf.WriteString(fence + "\n")
+	if it.Body != "" {
+		buf.WriteString("\n")
+		buf.WriteString(it.Body)
+	}
+	return buf.Bytes(), nil
+}
+
+// keyOrder is the order INTENT §7 gives the keys td owns. It is the shape a
+// new item is written in, and the yardstick for where a key that has just
+// gained a value belongs in a file td did not write.
+var keyOrder = []string{
+	"id", "title", "tags", "due", "created", "updated", "done_at",
+	"source", "context", "claude_session_name", "claude_session_id",
+}
+
+// frontmatter builds the mapping to emit.
+func (it *Item) frontmatter() (*yaml.Node, error) {
+	if it.parsed == nil {
+		return it.skeleton()
+	}
+	return it.inPlace()
+}
+
+// skeleton is the canonical §7 frontmatter, written for an item that came from
+// td rather than from a file: every mandatory key, in order, with tags and
+// done_at present even when empty so the file shows a person what it can hold.
+func (it *Item) skeleton() (*yaml.Node, error) {
 	m := &yaml.Node{Kind: yaml.MappingNode}
 	put := func(key string, val *yaml.Node) {
 		m.Content = append(m.Content, str(key), val)
@@ -229,7 +280,7 @@ func (it *Item) Marshal() ([]byte, error) {
 	put("title", str(it.Title))
 	put("tags", seq(it.Tags))
 	if it.Due != nil {
-		put("due", str(it.Due.String()))
+		put("due", dateNode(*it.Due))
 	}
 	created, err := timeNode(it.Created)
 	if err != nil {
@@ -250,37 +301,129 @@ func (it *Item) Marshal() ([]byte, error) {
 		}
 		put("done_at", doneAt)
 	}
-	for _, f := range []struct {
-		key string
-		val string
-	}{
-		{"source", it.Source},
-		{"context", it.Context},
-		{"claude_session_name", it.ClaudeSessionName},
-		{"claude_session_id", it.ClaudeSessionID},
-	} {
-		if f.val != "" {
-			put(f.key, str(f.val))
+	for _, key := range []string{"source", "context", "claude_session_name", "claude_session_id"} {
+		if val, err := it.value(key); err != nil {
+			return nil, err
+		} else if val != nil {
+			put(key, val)
 		}
 	}
-	m.Content = append(m.Content, it.residue...)
+	return m, nil
+}
 
-	var buf bytes.Buffer
-	buf.WriteString(fence + "\n")
-	enc := yaml.NewEncoder(&buf)
-	enc.SetIndent(2)
-	if err := enc.Encode(m); err != nil {
-		return nil, fmt.Errorf("encoding item frontmatter: %w", err)
+// inPlace edits the mapping the item was parsed from: every key td owns takes
+// its current value where the file already has that key, a key that has gained
+// a value since is inserted where §7 says it belongs, and no key is ever
+// removed — a file that says done_at: goes on saying it.
+func (it *Item) inPlace() (*yaml.Node, error) {
+	m := *it.parsed
+	m.Content = append([]*yaml.Node(nil), it.parsed.Content...)
+
+	at := func(key string) int {
+		for i := 0; i+1 < len(m.Content); i += 2 {
+			if m.Content[i].Value == key {
+				return i
+			}
+		}
+		return -1
 	}
-	if err := enc.Close(); err != nil {
-		return nil, fmt.Errorf("encoding item frontmatter: %w", err)
+
+	for _, key := range keyOrder {
+		val, err := it.value(key)
+		if err != nil {
+			return nil, err
+		}
+		if i := at(key); i >= 0 {
+			if val == nil {
+				val = emptyValue(key)
+			}
+			// The key node keeps any comment above it; the value node's own
+			// trailing comment has to be carried onto its replacement.
+			old := m.Content[i+1]
+			val.LineComment, val.FootComment = old.LineComment, old.FootComment
+			m.Content[i+1] = val
+			continue
+		}
+		if val == nil {
+			continue // absent from the file and still nothing to say
+		}
+		// Insert after the last key §7 puts ahead of this one that the file
+		// actually has, so the addition reads as part of the same block.
+		insert := 0
+		for _, before := range keyOrder {
+			if before == key {
+				break
+			}
+			if i := at(before); i >= 0 {
+				insert = i + 2
+			}
+		}
+		rest := append([]*yaml.Node{str(key), val}, m.Content[insert:]...)
+		m.Content = append(m.Content[:insert:insert], rest...)
 	}
-	buf.WriteString(fence + "\n")
-	if it.Body != "" {
-		buf.WriteString("\n")
-		buf.WriteString(it.Body)
+	return &m, nil
+}
+
+// value renders one key td owns from the field behind it, or nil when the
+// field holds nothing worth a line in the file.
+func (it *Item) value(key string) (*yaml.Node, error) {
+	switch key {
+	case "id":
+		return str(it.ID), nil
+	case "title":
+		return str(it.Title), nil
+	case "tags":
+		if len(it.Tags) == 0 {
+			return nil, nil
+		}
+		return seq(it.Tags), nil
+	case "due":
+		if it.Due == nil {
+			return nil, nil
+		}
+		return dateNode(*it.Due), nil
+	case "created":
+		if it.Created.IsZero() {
+			return nil, nil
+		}
+		return timeNode(it.Created)
+	case "updated":
+		if it.Updated.IsZero() {
+			return nil, nil
+		}
+		return timeNode(it.Updated)
+	case "done_at":
+		if it.DoneAt == nil {
+			return nil, nil
+		}
+		return timeNode(*it.DoneAt)
+	case "source":
+		return optional(it.Source), nil
+	case "context":
+		return optional(it.Context), nil
+	case "claude_session_name":
+		return optional(it.ClaudeSessionName), nil
+	case "claude_session_id":
+		return optional(it.ClaudeSessionID), nil
 	}
-	return buf.Bytes(), nil
+	return nil, fmt.Errorf("no such frontmatter key %q", key)
+}
+
+// optional renders a string field, or nil when it is empty.
+func optional(s string) *yaml.Node {
+	if s == "" {
+		return nil
+	}
+	return str(s)
+}
+
+// emptyValue is what a key already in the file becomes once its field is
+// empty: an empty list for tags, and nothing at all for the rest.
+func emptyValue(key string) *yaml.Node {
+	if key == "tags" {
+		return seq(nil)
+	}
+	return null()
 }
 
 // str builds a scalar node explicitly tagged as a string, so the emitter quotes
@@ -300,6 +443,13 @@ func seq(vals []string) *yaml.Node {
 		n.Content = append(n.Content, str(v))
 	}
 	return n
+}
+
+// dateNode renders a due date the way a person writes one: a bare 2006-01-02,
+// which YAML resolves to a timestamp and Date.UnmarshalYAML reads back. Quoting
+// it would make td's own files differ from a hand-written one for no gain.
+func dateNode(d Date) *yaml.Node {
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!timestamp", Value: d.String()}
 }
 
 // timeNode renders a timestamp in UTC, so ordering is textual as well as
