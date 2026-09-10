@@ -1,0 +1,9 @@
+{
+  "name": "td",
+  "description": "Capture and manage td todo items from a Claude Code session, so an idea raised mid-session gets a file instead of dying in scrollback.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Vladimir Kovic",
+    "email": "vlada.kovic@gmail.com"
+  }
+}
