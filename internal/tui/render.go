@@ -67,8 +67,8 @@ func (m *Model) View() string {
 	}
 
 	var b strings.Builder
-	if m.warn != nil {
-		fmt.Fprintln(&b, m.styles.warning.Render(m.fit("warning: "+m.warn.Error())))
+	for _, line := range m.notice("warning: ", m.warn) {
+		fmt.Fprintln(&b, m.styles.warning.Render(line))
 	}
 
 	if len(m.shown) == 0 {
@@ -85,8 +85,8 @@ func (m *Model) View() string {
 		value := m.fitTail(m.prompt.value+"█", ansi.StringWidth(label))
 		fmt.Fprintln(&b, label+value)
 	}
-	if m.err != nil {
-		fmt.Fprintln(&b, m.styles.warning.Render(m.fit("error: "+m.err.Error())))
+	for _, line := range m.notice("error: ", m.err) {
+		fmt.Fprintln(&b, m.styles.warning.Render(line))
 	}
 	// Rendered a line at a time: Lip Gloss pads every line of a multi-line
 	// block out to the widest one, which would trail the status line with
@@ -244,6 +244,25 @@ func (m *Model) footer() string {
 		line = ansi.Truncate(line, m.width, "…")
 	}
 	return line + "\n" + legend(m.width)
+}
+
+// notice renders one error as the lines the pane draws for it, each carrying
+// the prefix and each fitted to the width.
+//
+// One error is often several: a listing that met three unparsable files
+// reports an errors.Join, whose Error() is its causes separated by newlines.
+// Prefixing that whole string once left every line after the first unlabelled,
+// reading as if the pane had printed a bare filename at somebody.
+func (m *Model) notice(prefix string, err error) []string {
+	if err == nil {
+		return nil
+	}
+	causes := strings.Split(strings.TrimRight(err.Error(), "\n"), "\n")
+	lines := make([]string, 0, len(causes))
+	for _, cause := range causes {
+		lines = append(lines, m.fit(prefix+cause))
+	}
+	return lines
 }
 
 // fit trims a whole line to the pane, from the right. A width of zero is a

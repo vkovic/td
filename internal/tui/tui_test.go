@@ -474,6 +474,64 @@ func TestUnparsableFileWarnsAndKeepsTheRest(t *testing.T) {
 	}
 }
 
+// TestEveryBrokenFileGetsItsOwnWarningLine: a listing that met several broken
+// files reports one errors.Join, whose Error() is newline separated. Prefixing
+// that string once left every line after the first unlabelled, reading as if
+// the pane had printed a bare filename at somebody.
+func TestEveryBrokenFileGetsItsOwnWarningLine(t *testing.T) {
+	s := newStore(t)
+	save(t, s, item{id: "aaa", title: "readable", updated: ago(1)})
+	for _, name := range []string{"zzz-broken-one.md", "zzz-broken-two.md"} {
+		path := filepath.Join(s.Dir(store.Global, store.Active), name)
+		if err := os.WriteFile(path, []byte("---\nid: [unclosed\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	m := newModel(t, s)
+
+	// Wide enough to carry the whole of both messages: each names its own file
+	// and each is labelled.
+	resize(m, 200)
+	named := map[string]bool{}
+	for _, line := range strings.Split(plain(m.View()), "\n") {
+		if !strings.Contains(line, "broken") {
+			continue
+		}
+		if !strings.HasPrefix(line, "warning: ") {
+			t.Errorf("a broken file is reported on an unlabelled line: %q", line)
+		}
+		for _, name := range []string{"zzz-broken-one.md", "zzz-broken-two.md"} {
+			if strings.Contains(line, name) {
+				named[name] = true
+			}
+		}
+	}
+	if len(named) != 2 {
+		t.Errorf("%d of the two broken files were named on a warning line", len(named))
+	}
+
+	// And at the width td was written for, every one of those lines is still
+	// labelled and still fits.
+	resize(m, 60)
+	warned := 0
+	for _, line := range strings.Split(plain(m.View()), "\n") {
+		if !strings.HasPrefix(line, "warning: ") {
+			continue
+		}
+		warned++
+		if got := ansi.StringWidth(line); got > 60 {
+			t.Errorf("a warning line is %d columns wide, want 60 or fewer: %q", got, line)
+		}
+	}
+	if warned != 2 {
+		t.Errorf("%d warning lines, want one per broken file", warned)
+	}
+	if !strings.Contains(plain(m.View()), "readable") {
+		t.Error("the readable item is missing from the listing")
+	}
+}
+
 // TestRelative renders an age rather than a wall clock, because a list that
 // refreshes in place is read for what changed.
 func TestRelative(t *testing.T) {
