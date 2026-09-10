@@ -47,7 +47,7 @@ td rm <id>...
 td restore <id>...
 td bump
 td archive
-td commit
+td commit [-m <message>]
 td push
 td ui
 ```
@@ -102,7 +102,9 @@ terminals. A caller like this skill therefore never reaches the TUI, and should
 never invoke `td ui`: it takes over the terminal and does not return output to
 parse.
 
-`td commit` takes no `-m`.
+`td commit` takes `-m/--message` to set the commit subject; with no `-m` it
+writes one describing what the run did. The other three maintenance commands
+take no flags of their own.
 
 ## Ids
 

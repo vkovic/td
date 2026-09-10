@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/vkovic/td/internal/gitx"
 	"github.com/vkovic/td/internal/store"
 )
 
@@ -420,6 +422,66 @@ func TestAmbiguousPrefixIsRejected(t *testing.T) {
 	if !strings.Contains(err.Error(), "more than one") {
 		t.Errorf("error = %v, want it to say the prefix is ambiguous", err)
 	}
+}
+
+// TestCommitTakesAMessage: INTENT §9.1 writes td commit -m, and a hand tidy
+// deserves a subject that says what it was rather than one describing a run
+// that recorded nothing.
+func TestCommitTakesAMessage(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("add", "Something")
+
+	appendLine(h.t, h)
+	h.mustRun("commit", "-m", "hand tidy")
+
+	if got := subject(t, h); got != "hand tidy" {
+		t.Errorf("the commit subject is %q, want the message td commit -m was given", got)
+	}
+
+	// --json reports the message it used, so a caller can see what it wrote.
+	appendLine(h.t, h)
+	out := h.mustRun("commit", "--json", "-m", "x")
+	var res maintenanceResult
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.Epilogue.Message != "x" {
+		t.Errorf("--json reports message %q, want x", res.Epilogue.Message)
+	}
+
+	// With no -m, the default message describing the run still applies.
+	appendLine(h.t, h)
+	h.mustRun("commit")
+	if got := subject(t, h); got == "hand tidy" || got == "x" {
+		t.Errorf("the commit subject is %q, want the default message", got)
+	}
+}
+
+// appendLine dirties the store the way a hand edit does, so there is something
+// for the next commit to record.
+func appendLine(t *testing.T, h *harness) {
+	t.Helper()
+	e := only(t, h.list(store.Active), "the live list")
+	f, err := os.OpenFile(e.Ref.Path, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("\na line\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// subject is the subject line of the store's most recent commit.
+func subject(t *testing.T, h *harness) string {
+	t.Helper()
+	out, err := gitx.New(h.root).Run("log", "-1", "--format=%s")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(out)
 }
 
 func TestNoEpilogueSkipsTheCommit(t *testing.T) {

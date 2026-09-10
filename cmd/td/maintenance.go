@@ -44,7 +44,8 @@ func newMaintenanceCmds(a *app) []*cobra.Command {
 			use:   "commit",
 			short: "Commit the store",
 			long: "commit records the store's current state in git. It commits even when\n" +
-				"auto_commit is off, since asking for it outright is the point.",
+				"auto_commit is off, since asking for it outright is the point. -m gives\n" +
+				"the commit a message of your own instead of one describing the run.",
 			step: epilogue.StepCommit,
 		},
 		{
@@ -60,15 +61,22 @@ func newMaintenanceCmds(a *app) []*cobra.Command {
 	cmds := make([]*cobra.Command, 0, len(specs))
 	for _, spec := range specs {
 		spec := spec
-		cmds = append(cmds, &cobra.Command{
+		var message string
+		cmd := &cobra.Command{
 			Use:   spec.use,
 			Short: spec.short,
 			Long:  spec.long,
 			Args:  cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, args []string) error {
-				return a.maintenance(spec.use, spec.step)
+				return a.maintenance(spec.use, spec.step, message)
 			},
-		})
+		}
+		// Only commit takes a message: the other three do not write one, and a
+		// -m they silently ignored would be worse than no flag at all.
+		if spec.step == epilogue.StepCommit {
+			cmd.Flags().StringVarP(&message, "message", "m", "", "commit message, instead of one describing the run")
+		}
+		cmds = append(cmds, cmd)
 	}
 	return cmds
 }
@@ -78,7 +86,7 @@ func newMaintenanceCmds(a *app) []*cobra.Command {
 // Asking for a step outright overrides the setting that would otherwise skip
 // it: td commit commits with auto_commit off, and td push pushes with auto_push
 // off. A command you typed should do what it says.
-func (a *app) maintenance(action string, step epilogue.Step) error {
+func (a *app) maintenance(action string, step epilogue.Step, message string) error {
 	switch step {
 	case epilogue.StepCommit:
 		a.cfg.AutoCommit = true
@@ -86,7 +94,7 @@ func (a *app) maintenance(action string, step epilogue.Step) error {
 		a.cfg.AutoPush = true
 	}
 
-	res, err := a.runEpilogue(step, "")
+	res, err := a.runEpilogue(step, message)
 	if err != nil {
 		return err
 	}
