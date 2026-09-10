@@ -220,6 +220,56 @@ func TestRefreshRecordsAHandEdit(t *testing.T) {
 	}
 }
 
+// TestTheDefaultClockDoesNotForgeAHandEdit: the pane's own writes must not
+// look like edits made outside td.
+//
+// Marshal writes updated as whole-second RFC 3339 while Save pins the file's
+// mtime to the in-memory value, so a clock carrying nanoseconds leaves mtime a
+// fraction of a second past the updated it reads back as — which is exactly
+// what HandEdited calls an outside edit. The pane then reported "1 hand edit
+// recorded" for the x the user had just pressed, and rewrote the file to
+// "catch up" a timestamp it had written itself a moment earlier.
+//
+// This test deliberately does not inject a clock. Every other test here pins
+// one, and a pinned clock is a whole second, which is how the production
+// default went three milestones without being exercised.
+func TestTheDefaultClockDoesNotForgeAHandEdit(t *testing.T) {
+	s := newStore(t)
+	ref := save(t, s, item{id: "aaa", title: "toggle me", updated: ago(48)})
+
+	m, err := New(Options{
+		Store:    s,
+		Config:   config.Default(),
+		Scope:    store.ScopeChoice{Scope: store.Global},
+		Renderer: testRenderer(),
+		// Now is left nil on purpose: this is the clock a real pane runs on.
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	drain(t, m, press(m, "x"))
+
+	entries, err := s.List(store.Global, store.Active)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Ref.Path != ref.Path {
+			continue
+		}
+		edited, err := store.HandEdited(e)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if edited {
+			t.Errorf("the pane's own write reads as a hand edit: mtime is past the updated it wrote")
+		}
+	}
+	if strings.Contains(m.status, "hand edit") {
+		t.Errorf("the status claims %q after an x nobody hand edited", m.status)
+	}
+}
+
 // TestStatusDoesNotClaimAPushWithoutARemote: a store with nowhere to push
 // comes back with Pushed false, and the status line says only what happened.
 func TestStatusDoesNotClaimAPushWithoutARemote(t *testing.T) {

@@ -233,6 +233,18 @@ func (s *Store) Save(scope Scope, area Area, it *Item) (Ref, error) {
 	return Ref{Scope: scope, Area: area, Path: path}, nil
 }
 
+// Now is the clock every surface stamps an item with, and the truncation is
+// load-bearing rather than cosmetic. Marshal writes updated as whole-second
+// RFC 3339, while Save pins the file's mtime to the in-memory value. A clock
+// carrying nanoseconds therefore leaves a file whose mtime is a fraction of a
+// second past the updated it reads back as — which is precisely the condition
+// HandEdited defines as an edit made outside td, so td would report its own
+// write as somebody else's.
+//
+// UTC for the same reason ordering is textual: two machines write the same
+// bytes for the same instant.
+func Now() time.Time { return time.Now().UTC().Truncate(time.Second) }
+
 // HandEdited reports whether a file has been changed outside td since the item
 // in it was last written: its modification time has moved past the updated
 // timestamp in its own frontmatter. td's own writes pin the two together, so

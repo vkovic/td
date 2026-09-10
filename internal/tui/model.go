@@ -126,7 +126,8 @@ type Options struct {
 	// color profile so a style is observable in the rendered string.
 	Renderer *lipgloss.Renderer
 
-	// Now overrides the clock. Nil means time.Now.
+	// Now overrides the clock. Nil means store.Now, which every surface uses
+	// and which truncates to the second — see store.Now for why that matters.
 	Now func() time.Time
 
 	// Exec overrides how a child program is run. Nil means tea.ExecProcess.
@@ -155,7 +156,9 @@ func New(opts Options) (*Model, error) {
 		mode: ModeScope,
 	}
 	if m.now == nil {
-		m.now = time.Now
+		// store.Now, not time.Now: a clock carrying nanoseconds makes every
+		// write td does look like a hand edit to the next bump.
+		m.now = store.Now
 	}
 	if m.exec == nil {
 		m.exec = tea.ExecProcess

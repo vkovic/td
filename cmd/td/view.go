@@ -127,4 +127,4 @@ type mutationResult struct {
 
 // now is the timestamp a mutation records: UTC, to the second, matching what
 // frontmatter can represent.
-func now() time.Time { return time.Now().UTC().Truncate(time.Second) }
+func now() time.Time { return store.Now() }
