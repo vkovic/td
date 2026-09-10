@@ -99,7 +99,7 @@ func newRootCmdIO(stdout, stderr io.Writer, stdin io.Reader) *cobra.Command {
 		Long: "td keeps todo items as plain markdown under ~/.td, split into a global\n" +
 			"list and per-project lists resolved from a .td marker file. Every command\n" +
 			"commits its change, so the store is always a readable git history.",
-		Version:       version,
+		Version:       resolvedVersion(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// With no subcommand, a terminal gets the TUI and anything else gets

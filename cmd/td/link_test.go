@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -289,7 +290,86 @@ func TestVersionFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("td --version: %v", err)
 	}
-	if !strings.Contains(stdout, version) {
-		t.Errorf("td --version printed %q, want the version %q", stdout, version)
+	want := "td version " + resolvedVersion() + "\n"
+	if stdout != want {
+		t.Errorf("td --version printed %q, want %q", stdout, want)
+	}
+	if strings.Contains(stdout, "(devel)") {
+		t.Errorf("td --version printed %q, which names no build", stdout)
+	}
+}
+
+// TestBuildVersion: what --version says for each way td gets built. The
+// toolchain stamps all of this into every binary already; before M4 nothing
+// read it and every build called itself "dev".
+func TestBuildVersion(t *testing.T) {
+	info := func(mainVersion string, settings ...debug.BuildSetting) func() (*debug.BuildInfo, bool) {
+		return func() (*debug.BuildInfo, bool) {
+			return &debug.BuildInfo{
+				Main:     debug.Module{Version: mainVersion},
+				Settings: settings,
+			}, true
+		}
+	}
+	set := func(key, value string) debug.BuildSetting {
+		return debug.BuildSetting{Key: key, Value: value}
+	}
+	const sha = "7c64f17834d2ab19f0e3"
+
+	tests := []struct {
+		name    string
+		ldflags string
+		read    func() (*debug.BuildInfo, bool)
+		want    string
+	}{
+		{
+			name:    "an ldflags version wins outright",
+			ldflags: "v1.2.3",
+			read:    info("v0.1.0", set("vcs.revision", sha)),
+			want:    "v1.2.3",
+		},
+		{
+			name:    "a checkout build is named by its commit",
+			ldflags: devVersion,
+			read:    info("(devel)", set("vcs.revision", sha), set("vcs.modified", "false")),
+			want:    "7c64f17834d2",
+		},
+		{
+			name:    "an edited checkout says so",
+			ldflags: devVersion,
+			read:    info("(devel)", set("vcs.revision", sha), set("vcs.modified", "true")),
+			want:    "7c64f17834d2-dirty",
+		},
+		{
+			name:    "the pseudo-version a checkout build carries is not the answer",
+			ldflags: devVersion,
+			read:    info("v0.0.0-20260910152159-7c64f17834d2+dirty", set("vcs.revision", sha), set("vcs.modified", "true")),
+			want:    "7c64f17834d2-dirty",
+		},
+		{
+			name:    "go install @v0.1.0 has no VCS info and is named by its tag",
+			ldflags: devVersion,
+			read:    info("v0.1.0"),
+			want:    "v0.1.0",
+		},
+		{
+			name:    "a build with nothing to go on stays dev",
+			ldflags: devVersion,
+			read:    info("(devel)"),
+			want:    devVersion,
+		},
+		{
+			name:    "no build information at all",
+			ldflags: devVersion,
+			read:    func() (*debug.BuildInfo, bool) { return nil, false },
+			want:    devVersion,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := buildVersion(tc.ldflags, tc.read); got != tc.want {
+				t.Errorf("buildVersion = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
