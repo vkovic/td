@@ -77,6 +77,19 @@ type Model struct {
 	// relative timestamp reads as.
 	now func() time.Time
 
+	// watch reports that something under the store changed. It is nil when the
+	// model was built without one, which is what a test that drives reloads by
+	// hand wants.
+	watch *watcher
+
+	// flashUntil is when the "updated externally" note stops showing, and
+	// selfWriteUntil is how long a reload is attributed to this pane's own
+	// epilogue rather than to someone else. The second is a suppression window
+	// on the note alone: the reload itself always happens, because swallowing
+	// one would mean missing a change that landed mid-epilogue.
+	flashUntil     time.Time
+	selfWriteUntil time.Time
+
 	// exec is how the terminal is handed to another program. It is a field so
 	// a test can run the editor synchronously rather than going through Bubble
 	// Tea's terminal handover, which needs a real one.
@@ -105,6 +118,14 @@ type Options struct {
 
 	// Exec overrides how a child program is run. Nil means tea.ExecProcess.
 	Exec func(*exec.Cmd, tea.ExecCallback) tea.Cmd
+
+	// Watch turns on the file watcher. A test that drives reloads by hand
+	// leaves it off, so nothing races its own fixtures.
+	Watch bool
+
+	// Debounce overrides how long a burst of changes is collected for. Zero
+	// means defaultDebounce.
+	Debounce time.Duration
 }
 
 // New builds a model over an already open store and loads the first listing.
@@ -132,12 +153,81 @@ func New(opts Options) (*Model, error) {
 	if err := m.reload(); err != nil {
 		return nil, err
 	}
+	if opts.Watch {
+		w, err := newWatcher(opts.Store, opts.Debounce)
+		if err != nil {
+			return nil, err
+		}
+		m.watch = w
+	}
 	return m, nil
 }
 
+// Close releases the watcher. A model built without one has nothing to do.
+func (m *Model) Close() error {
+	if m.watch == nil {
+		return nil
+	}
+	return m.watch.Close()
+}
+
 // Init is Bubble Tea's startup hook. The first listing is already loaded, so
-// there is nothing to do until the watcher arrives.
-func (m *Model) Init() tea.Cmd { return nil }
+// the only thing to start is the wait for the first change.
+func (m *Model) Init() tea.Cmd { return m.awaitChange() }
+
+// awaitChange blocks a command goroutine on the watcher until something under
+// the store changes. Each pulse produces one message and one fresh wait, which
+// is how a channel becomes a stream of Bubble Tea messages.
+func (m *Model) awaitChange() tea.Cmd {
+	if m.watch == nil {
+		return nil
+	}
+	pulses := m.watch.Pulses()
+	return func() tea.Msg {
+		if _, ok := <-pulses; !ok {
+			return nil
+		}
+		return storeChangedMsg{}
+	}
+}
+
+// storeChangedMsg says that something under the store changed. It says nothing
+// about what, and it is never acted on beyond re-reading: the watcher must not
+// bump, sweep, commit or push, or two panes watching one store would drive each
+// other in a loop.
+type storeChangedMsg struct{}
+
+// flashClearedMsg retires the "updated externally" note.
+type flashClearedMsg struct{}
+
+// externalFlash is what the footer says when the list changed underneath it.
+const externalFlash = "updated externally"
+
+// flashFor is how long that note stays up.
+const flashFor = 3 * time.Second
+
+// selfWriteFor is how long after this pane's own epilogue a change is still
+// attributed to it rather than to someone else.
+const selfWriteFor = time.Second
+
+// afterStoreChanged re-reads the list and, when the change was not this pane's
+// doing, says so.
+func (m *Model) afterStoreChanged() tea.Cmd {
+	if err := m.reload(); err != nil {
+		m.err = err
+	}
+	cmds := []tea.Cmd{m.awaitChange()}
+	if now := m.now(); now.After(m.selfWriteUntil) {
+		m.flashUntil = now.Add(flashFor)
+		cmds = append(cmds, tea.Tick(flashFor, func(time.Time) tea.Msg {
+			return flashClearedMsg{}
+		}))
+	}
+	return tea.Batch(cmds...)
+}
+
+// flashing reports whether the external-change note is still showing.
+func (m *Model) flashing() bool { return m.now().Before(m.flashUntil) }
 
 // Update handles one message.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -153,6 +243,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.afterEditor(msg)
 	case epilogueDoneMsg:
 		m.afterEpilogue(msg)
+	case storeChangedMsg:
+		return m, m.afterStoreChanged()
+	case flashClearedMsg:
+		m.flashUntil = time.Time{}
 	}
 	return m, nil
 }
@@ -280,6 +374,9 @@ func (m *Model) afterEpilogue(msg epilogueDoneMsg) {
 	}
 	m.err = nil
 	m.status = describe(msg.res, msg.hasRemote)
+	// The events this run just produced are still in flight. They will still
+	// reload the list; they will not be reported as somebody else's doing.
+	m.selfWriteUntil = m.now().Add(selfWriteFor)
 	if err := m.reload(); err != nil {
 		m.err = err
 	}

@@ -33,10 +33,12 @@ func (a *app) ui() error {
 		Store:  a.store,
 		Config: a.cfg,
 		Scope:  a.scope,
+		Watch:  true,
 	})
 	if err != nil {
 		return err
 	}
+	defer m.Close()
 	// The alternate screen keeps the list off the scrollback: the pane is a
 	// view of the store, not a transcript of one.
 	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()

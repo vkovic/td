@@ -167,6 +167,9 @@ func (m *Model) footer() string {
 	if m.status != "" {
 		line += " · " + m.status
 	}
+	if m.flashing() {
+		line += " · " + externalFlash
+	}
 	return line
 }
 
