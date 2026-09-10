@@ -73,6 +73,18 @@ mid-session appears without you doing anything. A refresh only ever re-reads:
 it never records a hand edit, sweeps, commits or pushes, because two panes
 watching one store would otherwise drive each other in a loop.
 
+The pane reads from both ends. Open items start at the top, the done section
+sits against the bottom of the list with the `── done ──` rule over it, and the
+status line and key legend hold the last two rows whatever the list is doing —
+a short list leaves the gap in the middle rather than floating the footer up
+the pane. Each section scrolls on its own, and open is served first: a listing
+too long for the pane spends its height on open items and keeps the rule, which
+is the one thing on screen saying there is a done section under it.
+
+When rows are off screen the status line says where they went — `3 above,
+8 between, 5 below`. "Between" is the fold at the rule: rows hidden where the
+open section stops and the done one starts, which is neither end of the list.
+
 ### Keys
 
 | Key        | Does                                                   |

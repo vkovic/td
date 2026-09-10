@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -198,14 +200,16 @@ func lines(view string) []string {
 // plain is a whole view with its styling stripped.
 func plain(view string) string { return ansi.Strip(view) }
 
-// listText is every line the list would occupy, un-windowed: the rows plus the
-// done rule. It is what the pane renders when the height is unbounded.
+// listText is every row the list would occupy, un-windowed and with no gap in
+// it: the open rows and then the done ones, as the pane draws them when the
+// height is unbounded.
 func listText(m *Model) string {
-	lines, _ := m.listLines()
-	if len(lines) == 0 {
+	open, done := m.sections()
+	rows := append(append([]string{}, open...), done...)
+	if len(rows) == 0 {
 		return ""
 	}
-	return strings.Join(lines, "\n") + "\n"
+	return strings.Join(rows, "\n") + "\n"
 }
 
 // resize hands the model a terminal size, the way Bubble Tea does on start and
@@ -388,6 +392,467 @@ func TestTheFooterSaysWhatIsOffScreen(t *testing.T) {
 	m.Update(tea.WindowSizeMsg{Width: 60, Height: 60})
 	if got := plain(m.View()); strings.Contains(got, "below") {
 		t.Errorf("the footer reports a window for a list that fits:\n%s", got)
+	}
+}
+
+// stack files a listing of open items and done ones, newest first within each
+// section and titled so a rendered line names both which section it belongs to
+// and where in that section it sits.
+func stack(t *testing.T, s *store.Store, opens, dones int) {
+	t.Helper()
+	for i := range opens {
+		save(t, s, item{id: fmt.Sprintf("a%02d", i), title: fmt.Sprintf("open %02d", i), updated: ago(i + 1)})
+	}
+	for i := range dones {
+		finished := ago(i + 100)
+		save(t, s, item{id: fmt.Sprintf("z%02d", i), title: fmt.Sprintf("done %02d", i), updated: finished, doneAt: &finished})
+	}
+}
+
+// drawn is every line the view put on screen, blank ones included and styling
+// stripped. The gap between the sections is made of blank lines, so the
+// trimming helpers would hide the one thing these tests are about.
+func drawn(view string) []string { return strings.Split(plain(view), "\n") }
+
+// visibleRows is the index in m.shown of every item row among some rendered
+// lines, in the order they were drawn. A row is the only line carrying a
+// checkbox, which is what tells one from the rule, the gap and the chrome.
+func visibleRows(t *testing.T, m *Model, rendered []string) []int {
+	t.Helper()
+	var out []int
+	for _, line := range rendered {
+		line = plain(line)
+		if !strings.Contains(line, "[ ]") && !strings.Contains(line, "[x]") {
+			continue
+		}
+		found := -1
+		for i, e := range m.Entries() {
+			if strings.Contains(line, e.Item.Title) {
+				found = i
+				break
+			}
+		}
+		if found < 0 {
+			t.Fatalf("a row on screen names no item in the listing: %q", line)
+		}
+		out = append(out, found)
+	}
+	return out
+}
+
+// offScreenPattern reads the counts out of the footer's "3 above, 2 between,
+// 4 below". Only the clauses with something to report are printed.
+var offScreenPattern = regexp.MustCompile(`(\d+) (above|between|below)`)
+
+// offScreen is what the footer says is not on screen.
+func offScreen(view string) hidden {
+	var h hidden
+	for _, match := range offScreenPattern.FindAllStringSubmatch(plain(view), -1) {
+		n, err := strconv.Atoi(match[1])
+		if err != nil {
+			continue
+		}
+		switch match[2] {
+		case "above":
+			h.above = n
+		case "between":
+			h.mid = n
+		case "below":
+			h.below = n
+		}
+	}
+	return h
+}
+
+// TestTheFooterSitsOnTheLastLineOfThePane: the pane is filled, not merely
+// fitted. A list short enough to leave room used to end the view early, which
+// left the footer floating in the middle of the pane with the rest of it blank
+// — and a status line halfway up reads as the end of the screen rather than as
+// the end of the list.
+func TestTheFooterSitsOnTheLastLineOfThePane(t *testing.T) {
+	s := newStore(t)
+	stack(t, s, 2, 1)
+
+	m := newModel(t, s)
+	for _, height := range []int{24, 12, 6, 4, 3, 2} {
+		m.Update(tea.WindowSizeMsg{Width: 60, Height: height})
+		got := drawn(m.View())
+		if len(got) != height {
+			t.Errorf("at height %d the view is %d lines, want the pane filled:\n%s", height, len(got), strings.Join(got, "\n"))
+			continue
+		}
+		// Two lines of footer while there is room for both, and the status
+		// line alone once the legend has been shed.
+		want := "q quit"
+		if height == 2 {
+			want = "global ·"
+		}
+		if last := got[len(got)-1]; !strings.Contains(last, want) {
+			t.Errorf("at height %d the last line is %q, want the footer's %q", height, last, want)
+		}
+	}
+}
+
+// TestTheDoneSectionSitsAtTheBottomOfTheList: open at the top, done against
+// the bottom of the list area, and the spare height as blank lines between
+// them. The done section is the part you stop reading, so it belongs where you
+// stop looking.
+func TestTheDoneSectionSitsAtTheBottomOfTheList(t *testing.T) {
+	s := newStore(t)
+	stack(t, s, 2, 2)
+
+	m := newModel(t, s)
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 14})
+	got := drawn(m.View())
+	if len(got) != 14 {
+		t.Fatalf("the view is %d lines in a 14-row pane:\n%s", len(got), strings.Join(got, "\n"))
+	}
+
+	// Counting back from the footer, which holds the last two lines: the done
+	// rows, the rule above them, and the gap above that.
+	last := len(got) - 1
+	for i, want := range map[int]string{last - 1: "global ·", last - 2: "done 01", last - 3: "done 00", last - 4: doneRule} {
+		if !strings.Contains(got[i], want) {
+			t.Errorf("line %d is %q, want %q", i, got[i], want)
+		}
+	}
+	if !strings.Contains(got[0], "open 00") || !strings.Contains(got[1], "open 01") {
+		t.Errorf("the open rows are not at the top of the pane:\n%s", strings.Join(got, "\n"))
+	}
+	for i := 2; i <= last-5; i++ {
+		if strings.TrimSpace(got[i]) != "" {
+			t.Errorf("line %d is %q, want a blank line of the gap", i, got[i])
+		}
+	}
+}
+
+// TestThePromptSitsBetweenTheDoneSectionAndTheFooter: the prompt describes
+// itself as opening over the footer, so it is pinned there rather than
+// following the list up the pane.
+func TestThePromptSitsBetweenTheDoneSectionAndTheFooter(t *testing.T) {
+	s := newStore(t)
+	stack(t, s, 2, 1)
+
+	m := newModel(t, s)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
+	press(m, "a")
+
+	got := drawn(m.View())
+	if len(got) != 12 {
+		t.Fatalf("the view is %d lines in a 12-row pane:\n%s", len(got), strings.Join(got, "\n"))
+	}
+	last := len(got) - 1
+	for i, want := range map[int]string{last: "q quit", last - 1: "global ·", last - 2: "add>", last - 3: "done 00", last - 4: doneRule} {
+		if !strings.Contains(got[i], want) {
+			t.Errorf("line %d is %q, want %q", i, got[i], want)
+		}
+	}
+}
+
+// TestAWarningKeepsTheListBetweenItAndTheFooter: the head grows down from the
+// top and the footer stays on the bottom, so the warning costs the list a line
+// and moves nothing else.
+func TestAWarningKeepsTheListBetweenItAndTheFooter(t *testing.T) {
+	s := newStore(t)
+	stack(t, s, 2, 1)
+	broken := filepath.Join(s.Dir(store.Global, store.Active), "zzz-broken.md")
+	if err := os.WriteFile(broken, []byte("---\nid: [unclosed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := newModel(t, s)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
+	got := drawn(m.View())
+	if len(got) != 12 {
+		t.Fatalf("the view is %d lines in a 12-row pane:\n%s", len(got), strings.Join(got, "\n"))
+	}
+	if !strings.HasPrefix(got[0], "warning: ") {
+		t.Errorf("the first line is %q, want the warning", got[0])
+	}
+	if !strings.Contains(got[1], "open 00") {
+		t.Errorf("the list does not start under the warning: %q", got[1])
+	}
+	last := len(got) - 1
+	for i, want := range map[int]string{last: "q quit", last - 1: "global ·", last - 2: "done 00", last - 3: doneRule} {
+		if !strings.Contains(got[i], want) {
+			t.Errorf("line %d is %q, want %q", i, got[i], want)
+		}
+	}
+}
+
+// TestTheEmptyListKeepsItsMessageAtTheTop: nothing to window, and the two ends
+// of the pane still belong to the message and the footer.
+func TestTheEmptyListKeepsItsMessageAtTheTop(t *testing.T) {
+	s := newStore(t)
+
+	m := newModel(t, s)
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 10})
+	got := drawn(m.View())
+	if len(got) != 10 {
+		t.Fatalf("the view is %d lines in a 10-row pane:\n%s", len(got), strings.Join(got, "\n"))
+	}
+	if !strings.Contains(got[0], "Nothing here yet.") {
+		t.Errorf("the first line is %q, want the empty message", got[0])
+	}
+	if !strings.Contains(got[len(got)-1], "q quit") {
+		t.Errorf("the last line is %q, want the legend", got[len(got)-1])
+	}
+	for i := 1; i <= len(got)-3; i++ {
+		if strings.TrimSpace(got[i]) != "" {
+			t.Errorf("line %d is %q, want a blank line", i, got[i])
+		}
+	}
+}
+
+// TestOverflowGivesTheHeightToOpenFirst: a list too long for the pane spends
+// its height on the open items and leaves done the rule alone. The rule is
+// then the only thing on screen saying a done section exists, which is why it
+// is reserved rather than taken by the twentieth open row.
+func TestOverflowGivesTheHeightToOpenFirst(t *testing.T) {
+	s := newStore(t)
+	stack(t, s, 20, 5)
+
+	m := newModel(t, s)
+	// Ten lines of list: nine open rows and the rule.
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+	got := drawn(m.View())
+	if len(got) != 12 {
+		t.Fatalf("the view is %d lines in a 12-row pane:\n%s", len(got), strings.Join(got, "\n"))
+	}
+	for i := range 9 {
+		if want := fmt.Sprintf("open %02d", i); !strings.Contains(got[i], want) {
+			t.Errorf("line %d is %q, want %q", i, got[i], want)
+		}
+	}
+	if !strings.Contains(got[9], doneRule) {
+		t.Errorf("line 9 is %q, want the done rule", got[9])
+	}
+	if strings.Contains(plain(m.View()), "done 0") {
+		t.Errorf("a done row is drawn in a pane with no room for one:\n%s", strings.Join(got, "\n"))
+	}
+	// And nothing is padded: an overflowing list area is already full.
+	for i, line := range got {
+		if strings.TrimSpace(line) == "" {
+			t.Errorf("line %d is blank, want no gap while rows are hidden:\n%s", i, strings.Join(got, "\n"))
+		}
+	}
+}
+
+// TestTheDoneSectionGrowsBackForTheCursor: j walked into a done section
+// squeezed to its rule has to be able to see where it landed, so done takes a
+// line back off open — and gives it up again on the way out.
+func TestTheDoneSectionGrowsBackForTheCursor(t *testing.T) {
+	s := newStore(t)
+	stack(t, s, 20, 5)
+
+	m := newModel(t, s)
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+	if got := plain(m.View()); strings.Contains(got, "done 0") {
+		t.Fatalf("a done row is on screen before the cursor reaches one:\n%s", got)
+	}
+
+	// Straight onto the first done item, which is the row after the last open
+	// one.
+	m.cursor = 20
+	got := drawn(m.View())
+	if !strings.Contains(got[9], "done 00") {
+		t.Errorf("the cursor's own row is not on screen:\n%s", strings.Join(got, "\n"))
+	}
+	if !strings.Contains(got[8], doneRule) {
+		t.Errorf("line 8 is %q, want the rule above the done row", got[8])
+	}
+	if !strings.Contains(got[7], "open 07") {
+		t.Errorf("open did not give up exactly one row: line 7 is %q", got[7])
+	}
+
+	// Back out again, and open has its line back.
+	m.cursor = 0
+	got = drawn(m.View())
+	if !strings.Contains(got[8], "open 08") || !strings.Contains(got[9], doneRule) {
+		t.Errorf("open did not take back the line the cursor borrowed:\n%s", strings.Join(got, "\n"))
+	}
+
+	// And every step of the walk down and back keeps the selected row drawn.
+	m.cursor = 0
+	for _, key := range []string{"j", "k"} {
+		for range len(m.Entries()) + 2 {
+			press(m, key)
+			view := m.View()
+			if n := len(drawn(view)); n > 12 {
+				t.Fatalf("%s: the view is %d lines in a 12-row pane", key, n)
+			}
+			selected := strings.TrimSpace(plain(m.row(m.Entries()[m.cursor], true)))
+			if !strings.Contains(plain(view), selected) {
+				t.Fatalf("%s left the selected item off screen:\n%s", key, plain(view))
+			}
+		}
+	}
+}
+
+// TestTheFooterSaysWhichSideOfTheRuleRowsAreOn: two windows can each hide
+// rows, and a row hidden between them is neither above the list nor below it.
+// It is in the fold where the open section stops and the done one starts, and
+// a reader told it was "below" would scroll past it looking for it.
+func TestTheFooterSaysWhichSideOfTheRuleRowsAreOn(t *testing.T) {
+	s := newStore(t)
+	stack(t, s, 20, 5)
+
+	m := newModel(t, s)
+	// Ten lines of list against twenty-six of listing, so both windows have
+	// something to hide.
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+
+	// The cursor at the top: nine open rows and the rule, so the rest of the
+	// open section is in the fold and the whole done section is under it.
+	if got := plain(m.View()); !strings.Contains(got, "· 11 between, 5 below") {
+		t.Errorf("the footer does not count the fold:\n%s", got)
+	}
+	// Down to the last open row: the open window has scrolled, so it hides
+	// rows on both sides of what it draws.
+	m.cursor = 11
+	if got := plain(m.View()); !strings.Contains(got, "· 3 above, 8 between, 5 below") {
+		t.Errorf("the footer does not count all three places:\n%s", got)
+	}
+	// And into the done section, which gives the fold a row back.
+	m.cursor = 20
+	if got := plain(m.View()); !strings.Contains(got, "· 3 above, 9 between, 4 below") {
+		t.Errorf("the footer miscounts once the cursor is in the done section:\n%s", got)
+	}
+
+	// A fold nothing is drawn on either side of is not a fold. With the whole
+	// open section squeezed out, its rows are above what is on screen.
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 3})
+	if got := plain(m.View()); !strings.Contains(got, "· 20 above, 4 below") {
+		t.Errorf("rows squeezed out of a section are not counted on its own side:\n%s", got)
+	}
+
+	// And a list with no done section has no fold to count into.
+	t.Run("no done section", func(t *testing.T) {
+		s := newStore(t)
+		stack(t, s, 20, 0)
+		m := newModel(t, s)
+		m.Update(tea.WindowSizeMsg{Width: 100, Height: 5})
+		if got := plain(m.View()); !strings.Contains(got, "· 17 below") || strings.Contains(got, "between") {
+			t.Errorf("a list with nothing done reports a fold:\n%s", got)
+		}
+	})
+}
+
+// TestEachSectionScrollsOnItsOwn: two windows, two scroll offsets. Sharing one
+// between them looks right in a screenshot and drifts in use — the done window
+// scrolling to follow the cursor drags the open rows along under it, so rows
+// nobody navigated away from leave the screen.
+func TestEachSectionScrollsOnItsOwn(t *testing.T) {
+	s := newStore(t)
+	stack(t, s, 12, 6)
+
+	m := newModel(t, s)
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+
+	// Down to the first done item, which is the row after the last open one.
+	for range 12 {
+		press(m, "j")
+	}
+	if m.cursor != 12 {
+		t.Fatalf("the walk ended on row %d, want the first done item", m.cursor)
+	}
+	was := drawn(m.View())[0]
+	if !strings.Contains(was, "open ") {
+		t.Fatalf("the first line is %q, want an open row", was)
+	}
+
+	// On down the done section. The open window was not asked to move, so it
+	// shows what it showed.
+	for range len(m.Entries()) - 13 {
+		press(m, "j")
+		if got := drawn(m.View())[0]; got != was {
+			t.Fatalf("with the cursor on row %d the open window starts at %q, want %q", m.cursor, got, was)
+		}
+	}
+	// And the done window did follow, all the way to the last row.
+	selected := strings.TrimSpace(plain(m.row(m.Entries()[m.cursor], true)))
+	if !strings.Contains(plain(m.View()), selected) {
+		t.Fatalf("the done window did not follow the cursor:\n%s", plain(m.View()))
+	}
+}
+
+// TestEveryRowIsShownOrCounted: the conservation law across the two windows.
+// Between them they draw each row at most once, in the listing's order, and
+// whatever they do not draw the footer counts — so no row can be dropped by
+// both windows or drawn by both.
+func TestEveryRowIsShownOrCounted(t *testing.T) {
+	s := newStore(t)
+	stack(t, s, 12, 6)
+
+	m := newModel(t, s)
+	resize(m, 100)
+	for capacity := range 25 {
+		for cursor := range len(m.Entries()) {
+			m.cursor = cursor
+			lines, off := m.body(capacity)
+			rows := visibleRows(t, m, lines)
+			for i := 1; i < len(rows); i++ {
+				if rows[i] <= rows[i-1] {
+					t.Fatalf("at capacity %d cursor %d the rows are drawn %v, want each once in the listing's order", capacity, cursor, rows)
+				}
+			}
+			if got := len(rows) + off.above + off.mid + off.below; got != len(m.Entries()) {
+				t.Fatalf("at capacity %d cursor %d, %d rows drawn and %+v hidden, want %d rows accounted for", capacity, cursor, len(rows), off, len(m.Entries()))
+			}
+			var rules, gap int
+			for _, line := range lines {
+				switch {
+				case strings.Contains(plain(line), doneRule):
+					rules++
+				case strings.TrimSpace(plain(line)) == "":
+					gap++
+				}
+			}
+			if len(lines) != len(rows)+rules+gap {
+				t.Fatalf("at capacity %d cursor %d the list area holds %d lines, want %d rows plus %d rules plus %d blank", capacity, cursor, len(lines), len(rows), rules, gap)
+			}
+			if capacity > 0 && len(lines) != capacity {
+				t.Fatalf("at capacity %d cursor %d the list area holds %d lines, want it filled", capacity, cursor, len(lines))
+			}
+			if gap > 0 && off.above+off.mid+off.below > 0 {
+				t.Fatalf("at capacity %d cursor %d the list area is padded while %+v rows are hidden", capacity, cursor, off)
+			}
+		}
+	}
+}
+
+// TestTheViewFitsEveryHeightDownToOne: the whole layout, at every height a
+// pane can have and with the cursor on every row. The pane is never exceeded,
+// the row the cursor is on is always drawn, and while the status line survives
+// it accounts for every row that is not.
+func TestTheViewFitsEveryHeightDownToOne(t *testing.T) {
+	s := newStore(t)
+	stack(t, s, 12, 6)
+
+	m := newModel(t, s)
+	for height := 1; height <= 26; height++ {
+		for cursor := range len(m.Entries()) {
+			m.cursor = cursor
+			m.Update(tea.WindowSizeMsg{Width: 100, Height: height})
+			view := m.View()
+			got := drawn(view)
+			if len(got) > height {
+				t.Fatalf("at height %d cursor %d the view is %d lines:\n%s", height, cursor, len(got), strings.Join(got, "\n"))
+			}
+			selected := strings.TrimSpace(plain(m.row(m.Entries()[cursor], true)))
+			if !strings.Contains(plain(view), selected) {
+				t.Fatalf("at height %d the cursor's row is off screen:\n%s", height, plain(view))
+			}
+			// A one-row pane has shed the footer, and a pane with nothing to
+			// report has nothing to say about it.
+			if height < 2 {
+				continue
+			}
+			off := offScreen(view)
+			if n := len(visibleRows(t, m, got)); n+off.above+off.mid+off.below != len(m.Entries()) {
+				t.Fatalf("at height %d cursor %d, %d rows drawn and %+v hidden, want %d rows accounted for", height, cursor, n, off, len(m.Entries()))
+			}
+		}
 	}
 }
 
@@ -819,7 +1284,7 @@ func TestFooterNamesTheScopeAndCounts(t *testing.T) {
 	save(t, s, item{id: "bbb", title: "shut", updated: ago(2), doneAt: done(ago(2))})
 
 	m := newModel(t, s)
-	footer := m.footer(0, 0)
+	footer := m.footer(hidden{})
 	if !strings.Contains(footer, "global") {
 		t.Errorf("the footer does not name the scope: %q", footer)
 	}
@@ -841,7 +1306,7 @@ func TestProjectScopeListsOnlyThatProject(t *testing.T) {
 	if got, want := strings.Join(titles(m), ","), "project item"; got != want {
 		t.Errorf("the project listing is %s, want %s", got, want)
 	}
-	if !strings.Contains(m.footer(0, 0), "acme") {
-		t.Errorf("the footer does not name the project: %q", m.footer(0, 0))
+	if !strings.Contains(m.footer(hidden{}), "acme") {
+		t.Errorf("the footer does not name the project: %q", m.footer(hidden{}))
 	}
 }

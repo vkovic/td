@@ -115,11 +115,13 @@ type Model struct {
 	width, height int
 	quitting      bool
 
-	// top is the first list line on screen, and helpTop the first line of the
+	// openTop is the first open row on screen and doneTop the first done one,
+	// each region scrolling on its own; helpTop is the first line of the
 	// overlay. Without them the pane rendered every line it had and let the
 	// terminal keep whichever end fit — the oldest items, since the newest
 	// sort first — with the cursor free to sit off-screen entirely.
-	top     int
+	openTop int
+	doneTop int
 	helpTop int
 
 	// showHelp is whether the key overlay is covering the list.

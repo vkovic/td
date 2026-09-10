@@ -57,13 +57,19 @@ func newStyles(r *lipgloss.Renderer) styles {
 // both sections have rows, so a list of nothing but open items carries no rule.
 const doneRule = "── done ──"
 
-// View renders the whole screen.
+// View renders the whole screen, top to bottom: the warnings, the open rows,
+// the blank gap, the done section, the prompt and error lines, and the footer.
 //
 // Everything is bounded by the pane in both directions. The list is windowed
 // to whatever height the chrome leaves it, because a pane that renders more
 // lines than it has hands the terminal the choice of which end to keep — and
 // the terminal keeps the tail, which for a list sorted newest-first is the
 // oldest items and never the one just added.
+//
+// The list area is filled rather than merely fitted: whatever it does not need
+// becomes the gap between the two sections. That is what holds the done
+// section against the bottom of the list and the footer against the bottom of
+// the pane, instead of both floating up under a short list.
 func (m *Model) View() string {
 	if m.quitting {
 		return ""
@@ -100,7 +106,7 @@ func (m *Model) View() string {
 	for footerLines > 0 && m.height > 0 && m.height-len(head)-len(tail)-footerLines < 1 {
 		footerLines--
 	}
-	body, above, below := m.body(m.capacity(len(head) + len(tail) + footerLines))
+	body, off := m.body(m.capacity(len(head) + len(tail) + footerLines))
 
 	var b strings.Builder
 	for _, line := range head {
@@ -115,7 +121,7 @@ func (m *Model) View() string {
 	// Rendered a line at a time: Lip Gloss pads every line of a multi-line
 	// block out to the widest one, which would trail the status line with
 	// however many spaces the legend is longer by.
-	for _, line := range strings.Split(m.footer(above, below), "\n")[:footerLines] {
+	for _, line := range strings.Split(m.footer(off), "\n")[:footerLines] {
 		fmt.Fprintln(&b, m.styles.footer.Render(line))
 	}
 	// No trailing newline. A view that ends with one occupies a line more than
@@ -137,45 +143,176 @@ func (m *Model) capacity(chrome int) int {
 	return max(m.height-chrome, 1)
 }
 
-// body is the list, windowed to capacity, with how many of its lines fell off
-// each end. The window moves the least that puts the cursor back on screen, so
-// the list holds still until the cursor would otherwise leave it.
-func (m *Model) body(capacity int) (lines []string, above, below int) {
-	if len(m.shown) == 0 {
-		m.top = 0
-		return []string{m.styles.emptyMsg.Render(m.fit(m.emptyLine()))}, 0, 0
+// body is the list area, filled to capacity: the open rows at the top, the
+// done section at the bottom, and the blank gap between them. It reports what
+// the two windows left off screen, which is what the footer counts.
+//
+// The regions window separately, each moving the least that puts the cursor
+// back on screen, so scrolling one does not drag the other.
+func (m *Model) body(capacity int) (lines []string, off hidden) {
+	openRows, doneRows := m.sections()
+	// m.shown is sorted open-before-done, so the cursor's index into it is
+	// also its index into the open rows, or past their end into the done ones.
+	openCursor, doneCursor := m.cursor, -1
+	if m.cursor >= len(openRows) {
+		openCursor, doneCursor = -1, m.cursor-len(openRows)
 	}
-	lines, cursorLine := m.listLines()
-	if capacity <= 0 || len(lines) <= capacity {
-		m.top = 0
-		return lines, 0, 0
+	openHeight, doneHeight, ruled := split(capacity, len(openRows), len(doneRows), doneCursor >= 0)
+	openReg := window(openRows, openHeight, openCursor, &m.openTop)
+	doneReg := window(doneRows, doneHeight, doneCursor, &m.doneTop)
+
+	used := len(openReg.lines) + len(doneReg.lines)
+	if ruled {
+		used++
 	}
-	m.top = min(max(m.top, 0), len(lines)-capacity)
-	if cursorLine < m.top {
-		m.top = cursorLine
+	lines = append(lines, openReg.lines...)
+	// The gap is what is left over, and there is something left over only when
+	// nothing was windowed: an overflowing list area is already full.
+	for range max(capacity-used, 0) {
+		lines = append(lines, "")
 	}
-	if cursorLine >= m.top+capacity {
-		m.top = cursorLine - capacity + 1
+	if ruled {
+		lines = append(lines, m.styles.rule.Render(doneRule))
 	}
-	return lines[m.top : m.top+capacity], m.top, len(lines) - m.top - capacity
+	lines = append(lines, doneReg.lines...)
+	return lines, offscreen(openReg, doneReg, ruled)
 }
 
-// listLines renders every line the list would take, and says which of them the
-// cursor is on. The rule counts as a line: it occupies a row on screen, so a
-// window that ignored it would render one line more than it meant to.
-func (m *Model) listLines() (lines []string, cursorLine int) {
-	ruled := false
-	for i, e := range m.shown {
-		if !ruled && e.Item.Done() && i > 0 {
-			lines = append(lines, m.styles.rule.Render(doneRule))
-			ruled = true
-		}
-		if i == m.cursor {
-			cursorLine = len(lines)
-		}
-		lines = append(lines, m.row(e, i == m.cursor))
+// sections renders the list as the two regions the pane draws it in: the open
+// rows and the done ones, each in m.shown's order.
+//
+// An empty list has the line that says why in place of its open rows, so it
+// reads from the top of the list area with the footer still on the bottom.
+func (m *Model) sections() (open, done []string) {
+	if len(m.shown) == 0 {
+		return []string{m.styles.emptyMsg.Render(m.fit(m.emptyLine()))}, nil
 	}
-	return lines, cursorLine
+	for i, e := range m.shown {
+		row := m.row(e, i == m.cursor)
+		if e.Item.Done() {
+			done = append(done, row)
+		} else {
+			open = append(open, row)
+		}
+	}
+	return open, done
+}
+
+// split divides the list area between the two regions when the whole list will
+// not fit in it. Open goes first: it takes the height it needs, up to the whole
+// area less the line the rule holds, and done gets whatever is left, down to
+// the rule on its own. A long open list still ends in the rule, which is the
+// only thing on screen saying a done section exists at all.
+//
+// The cursor overrides that. Whichever region holds it shows its row, so a
+// cursor walked down into a done section squeezed to the rule grows it back a
+// line at open's expense. In an area of one line there is no room for both,
+// and it is the rule that gives way: a pane showing one row of list must show
+// the row the cursor is on.
+func split(capacity, open, done int, cursorInDone bool) (openHeight, doneHeight int, ruled bool) {
+	ruled = open > 0 && done > 0
+	rule := 0
+	if ruled {
+		rule = 1
+	}
+	// A capacity of zero is a height Bubble Tea has not sent yet: nothing is
+	// windowed, and nothing is padded either.
+	if capacity <= 0 || open+rule+done <= capacity {
+		return open, done, ruled
+	}
+
+	// What each region must show to keep the cursor on screen. Only one of
+	// them holds it, and the empty-list message counts as an open row.
+	minOpen, minDone := 0, 0
+	if cursorInDone {
+		minDone = 1
+	} else if open > 0 {
+		minOpen = 1
+	}
+
+	openHeight = min(max(min(open, capacity-rule-minDone), minOpen), capacity)
+	switch rest := capacity - openHeight; {
+	case !ruled:
+		doneHeight = rest
+	case rest <= minDone:
+		// One line, and the cursor is on a row of it: the rule is what goes.
+		ruled, doneHeight = false, rest
+	default:
+		doneHeight = rest - 1
+	}
+	return openHeight, doneHeight, ruled
+}
+
+// region is one windowed section: the lines on screen and how many of its rows
+// fell off each end of it.
+type region struct {
+	lines        []string
+	total        int
+	above, below int
+}
+
+// window slices rows to height, moving top the least that keeps the cursor row
+// on screen, so a region holds still until the cursor would otherwise leave it.
+// top is the caller's own field, updated in place. A cursor of -1 says the
+// cursor is in the other region and this one does not chase it.
+//
+// A region given no height at all reports every row as below it, and offscreen
+// puts them back on the right side of the fold: a squeezed-out open section
+// sits above what is drawn, not under it.
+func window(rows []string, height, cursor int, top *int) region {
+	if height >= len(rows) {
+		*top = 0
+		return region{lines: rows, total: len(rows)}
+	}
+	if height <= 0 {
+		*top = 0
+		return region{total: len(rows), below: len(rows)}
+	}
+	*top = min(max(*top, 0), len(rows)-height)
+	if cursor >= 0 {
+		if cursor < *top {
+			*top = cursor
+		}
+		if cursor >= *top+height {
+			*top = cursor - height + 1
+		}
+	}
+	return region{
+		lines: rows[*top : *top+height],
+		total: len(rows),
+		above: *top,
+		below: len(rows) - *top - height,
+	}
+}
+
+// hidden is how many rows are off screen, sorted into where a reader would go
+// looking for them: above everything on screen, between the two sections, and
+// below everything.
+type hidden struct{ above, mid, below int }
+
+// any reports whether anything is off screen at all.
+func (h hidden) any() bool { return h.above > 0 || h.mid > 0 || h.below > 0 }
+
+// offscreen sorts what the two windows hid into those three places. There is a
+// middle to be in only when both sections are drawn: the fold is the rule, or
+// the last open row above the first done one. A section the pane draws nothing
+// of — no rows and, for done, not even its rule — takes its hidden rows to its
+// own side of that fold, because a reader told rows are "between" would be
+// looking for a join that is not on screen.
+func offscreen(open, done region, ruled bool) hidden {
+	if len(done.lines) == 0 && !ruled {
+		return hidden{above: open.above, below: open.below + done.total}
+	}
+	if len(open.lines) == 0 {
+		return hidden{above: open.total + done.above, below: done.below}
+	}
+	h := hidden{above: open.above, mid: open.below + done.above, below: done.below}
+	// The rule is drawn but no done row under it: what the done window hid
+	// above its own top is still under the rule, and so is below the fold.
+	if len(done.lines) == 0 {
+		h.below, h.mid = h.below+done.above, h.mid-done.above
+	}
+	return h
 }
 
 // minTitle is the narrowest a title is ever squeezed to. A row cut below this
@@ -338,7 +475,7 @@ const minFilterEcho = 12
 // user: the filter echo is whatever was typed into /, and a project name has
 // no length limit at all, so a status line wider than the pane is ordinary use
 // rather than an edge case.
-func (m *Model) footer(above, below int) string {
+func (m *Model) footer(off hidden) string {
 	open := 0
 	for _, e := range m.shown {
 		if !e.Item.Done() {
@@ -348,8 +485,8 @@ func (m *Model) footer(above, below int) string {
 	line := fmt.Sprintf("%s · %d open, %d total", m.scopeLabel(), open, len(m.shown))
 	// A list that just stops at the bottom of the pane looks like the whole
 	// list. Saying what is off-screen is what makes the window visible.
-	if above > 0 || below > 0 {
-		line += fmt.Sprintf(" · %d above, %d below", above, below)
+	if off.any() {
+		line += " · " + off.describe()
 	}
 	if f := m.filters.describe(); f != "" {
 		// Trimmed before the line is assembled: the filter sits in the middle,
@@ -367,6 +504,27 @@ func (m *Model) footer(above, below int) string {
 		line = ansi.Truncate(line, m.width, "…")
 	}
 	return line + "\n" + legend(m.width)
+}
+
+// describe says where the rows that are off screen went. Two windows can each
+// hide rows, and a row hidden between them is neither above the list nor below
+// it: it is in the fold where the open section stops and the done one starts.
+// Counting those as "above" or "below" would send the reader scrolling the
+// wrong way, or the right way past the row they wanted.
+//
+// A count of zero is left out rather than printed, because "0 above" is a fact
+// about a place nothing is hidden in.
+func (h hidden) describe() string {
+	var parts []string
+	for _, p := range []struct {
+		n    int
+		word string
+	}{{h.above, "above"}, {h.mid, "between"}, {h.below, "below"}} {
+		if p.n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", p.n, p.word))
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // notice renders one error as the lines the pane draws for it, each carrying
