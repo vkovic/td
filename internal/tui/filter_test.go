@@ -175,54 +175,6 @@ func TestFiltersCombine(t *testing.T) {
 	}
 }
 
-// TestScopeCycleFromAProject: g visits the project's own list, the global list,
-// and every scope merged.
-func TestScopeCycleFromAProject(t *testing.T) {
-	s := newStore(t)
-	save(t, s, item{id: "aaa", title: "global one", updated: ago(1)})
-	save(t, s, item{id: "bbb", title: "global two", updated: ago(2)})
-	save(t, s, item{id: "ccc", title: "acme one", updated: ago(3), scope: store.Scope("acme")})
-
-	m := newModel(t, s, func(o *Options) {
-		o.Scope = store.ScopeChoice{Scope: store.Scope("acme")}
-	})
-
-	steps := []struct {
-		label string
-		count int
-	}{
-		{label: "acme", count: 1},
-		{label: "global", count: 2},
-		{label: "all scopes", count: 3},
-		{label: "acme", count: 1},
-	}
-	for i, want := range steps {
-		if got := len(m.Entries()); got != want.count {
-			t.Errorf("stop %d holds %d items, want %d", i, got, want.count)
-		}
-		if got := m.scopeLabel(); got != want.label {
-			t.Errorf("stop %d is labelled %q, want %q", i, got, want.label)
-		}
-		press(m, "g")
-	}
-}
-
-// TestScopeCycleFromTheGlobalList: a store with no project resolved has no
-// separate project stop, so it does not show the same list twice.
-func TestScopeCycleFromTheGlobalList(t *testing.T) {
-	s := newStore(t)
-	save(t, s, item{id: "aaa", title: "global one", updated: ago(1)})
-	save(t, s, item{id: "bbb", title: "acme one", updated: ago(2), scope: store.Scope("acme")})
-
-	m := newModel(t, s)
-	for i, want := range []string{"global", "all scopes", "global", "all scopes"} {
-		if got := m.scopeLabel(); got != want {
-			t.Errorf("stop %d is labelled %q, want %q", i, got, want)
-		}
-		press(m, "g")
-	}
-}
-
 // TestFilterSurvivesAReload: a change landing while a filter is open leaves the
 // filter and the cursor where they were. The filter is view state; a reload
 // re-reads the store, which never knew about it.

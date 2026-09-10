@@ -68,6 +68,9 @@ func (m *Model) View() string {
 	if m.quitting {
 		return ""
 	}
+	if m.picker.open {
+		return m.pickerView()
+	}
 	if m.showHelp {
 		return m.helpView()
 	}
@@ -213,7 +216,7 @@ func (m *Model) row(e store.Entry, selected bool) string {
 	// Only the merged view needs the label: in a single-scope view every row
 	// would carry the same one, which is what the status line already says.
 	// It sits before the title, where td ls --all puts its SCOPE column.
-	if m.mode == ModeAll {
+	if m.view.merged {
 		before = append(before, m.styles.scope.Render(e.Ref.Scope.String()))
 	}
 
@@ -431,12 +434,7 @@ func (m *Model) emptyLine() string {
 
 // scopeLabel names the list on screen: the project or global name for a single
 // scope, and "all scopes" for the merged view.
-func (m *Model) scopeLabel() string {
-	if m.mode == ModeAll {
-		return "all scopes"
-	}
-	return m.currentScope().String()
-}
+func (m *Model) scopeLabel() string { return m.view.label() }
 
 // relative renders a timestamp as an age, which is what a list refreshed in
 // place needs: "3m ago" tells you something changed, a wall clock does not.

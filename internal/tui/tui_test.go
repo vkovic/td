@@ -140,6 +140,38 @@ func press(m *Model, key string) tea.Cmd {
 	return cmd
 }
 
+// pick moves to a list through the picker, the way a person does: g, then the
+// cursor onto the row with that label, then enter.
+func pick(t *testing.T, m *Model, label string) {
+	t.Helper()
+	press(m, "g")
+	if !m.picker.open {
+		t.Fatalf("g did not open the picker")
+	}
+	for i, row := range m.picker.rows {
+		if row.label() == label {
+			for m.picker.cursor < i {
+				press(m, "j")
+			}
+			for m.picker.cursor > i {
+				press(m, "k")
+			}
+			press(m, "enter")
+			return
+		}
+	}
+	t.Fatalf("the picker does not list %q, only %s", label, strings.Join(pickerLabels(m), ", "))
+}
+
+// pickerLabels names every row the open picker lists, in order.
+func pickerLabels(m *Model) []string {
+	out := make([]string, len(m.picker.rows))
+	for i, row := range m.picker.rows {
+		out[i] = row.label()
+	}
+	return out
+}
+
 // keyTypes maps the named keys a test presses to their Bubble Tea types.
 var keyTypes = map[string]tea.KeyType{
 	"up": tea.KeyUp, "down": tea.KeyDown, "enter": tea.KeyEnter, "esc": tea.KeyEsc,
@@ -422,7 +454,7 @@ func TestNoRowEverExceedsTheWidth(t *testing.T) {
 		resize(m, width)
 		for _, merged := range []bool{false, true} {
 			if merged {
-				m.mode = ModeAll
+				m.view = scopeView{merged: true}
 				if err := m.reload(); err != nil {
 					t.Fatal(err)
 				}
@@ -506,9 +538,9 @@ func TestMergedViewLabelsEachScope(t *testing.T) {
 		t.Errorf("a single-scope view labelled its rows, which says the same thing on every one:\n%s", got)
 	}
 
-	press(m, "g") // onto the merged view
+	pick(t, m, "all scopes")
 	if m.scopeLabel() != "all scopes" {
-		t.Fatalf("g landed on %q, want the merged view", m.scopeLabel())
+		t.Fatalf("the picker landed on %q, want the merged view", m.scopeLabel())
 	}
 	// The label belongs to its own row, not to whichever row sorted first.
 	for _, line := range strings.Split(strings.TrimRight(plain(listText(m)), "\n"), "\n") {

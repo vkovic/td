@@ -109,22 +109,3 @@ func (m *Model) cycleTag() {
 	}
 	m.applyFilters()
 }
-
-// cycleScope moves to the next list: the directory's own scope, then the global
-// list, then every scope merged.
-//
-// A store opened on the global list has no separate project stop, so it cycles
-// between global and all rather than showing the same list twice.
-func (m *Model) cycleScope() error {
-	switch {
-	case m.mode == ModeScope:
-		m.mode = ModeGlobal
-	case m.mode == ModeGlobal:
-		m.mode = ModeAll
-	case m.scope.Scope.IsGlobal():
-		m.mode = ModeGlobal
-	default:
-		m.mode = ModeScope
-	}
-	return m.reload()
-}

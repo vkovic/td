@@ -242,8 +242,7 @@ func TestFooterCarriesTheScopeFilterStatusAndFlash(t *testing.T) {
 	})
 	// The items above are in the global list, so switch to the merged view to
 	// see them from a project scope.
-	press(m, "g")
-	press(m, "g")
+	pick(t, m, "all scopes")
 
 	typeInto(m, "/", "docs")
 	press(m, "enter")

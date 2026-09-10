@@ -19,29 +19,28 @@ import (
 	"github.com/vkovic/td/internal/store"
 )
 
-// ScopeMode is which lists the TUI is showing: the scope resolved for the
-// working directory, the global list, or every scope merged.
-type ScopeMode int
+// scopeView is which list the pane is showing: one scope, or every scope
+// merged.
+//
+// The scope on screen is not a mode. The marker's scope, the global list and a
+// project picked with g are the same kind of thing to everything downstream —
+// the listing, the label, the list an add is filed in — and a fixed set of
+// modes could not name the third. The merged view is the one state that names
+// no scope of its own, so it is the one flag here.
+type scopeView struct {
+	// merged is the all-scopes view, as td ls --all shows it.
+	merged bool
+	// scope is the list shown when merged is false.
+	scope store.Scope
+}
 
-const (
-	// ModeScope shows the scope a .td marker or the scope flags resolved to.
-	ModeScope ScopeMode = iota
-	// ModeGlobal shows the global list.
-	ModeGlobal
-	// ModeAll merges every scope, as td ls --all does.
-	ModeAll
-)
-
-// String names the mode as the footer reports it.
-func (m ScopeMode) String() string {
-	switch m {
-	case ModeGlobal:
-		return "global"
-	case ModeAll:
-		return "all"
-	default:
-		return "scope"
+// label names the list this view shows, in the words both the footer and the
+// picker use for it.
+func (v scopeView) label() string {
+	if v.merged {
+		return "all scopes"
 	}
+	return v.scope.String()
 }
 
 // Model is the Bubble Tea model: the loaded listing, where the cursor sits, and
@@ -51,7 +50,10 @@ type Model struct {
 	cfg   config.Config
 	scope store.ScopeChoice
 
-	mode ScopeMode
+	// view is which list is on screen. It is view state, like the filters: a
+	// reload re-reads whatever it names, and a restart opens on the scope the
+	// working directory resolved to.
+	view scopeView
 
 	// entries is everything the current scope holds, and shown is what
 	// survives the filters. The cursor indexes shown, because the cursor is a
@@ -71,6 +73,9 @@ type Model struct {
 
 	// prompt is the inline line editor, when one is open.
 	prompt prompt
+
+	// picker is the scope overlay, when it is open.
+	picker picker
 
 	// status is what the last epilogue did, and err the last failure that was
 	// worth showing rather than fatal. Both are footer text.
@@ -158,9 +163,10 @@ func New(opts Options) (*Model, error) {
 		now:    opts.Now,
 		exec:   opts.Exec,
 		styles: newStyles(opts.Renderer),
-		// A store opened on the global scope has no project list to show, so
-		// the TUI starts where the CLI would have listed.
-		mode: ModeScope,
+		// The pane opens on the list td ls would have printed here: the scope
+		// a .td marker or the scope flags resolved to, which is the global
+		// list when nothing resolved a project.
+		view: scopeView{scope: opts.Scope.Scope},
 	}
 	if m.now == nil {
 		// store.Now, not time.Now: a clock carrying nanoseconds makes every
@@ -169,9 +175,6 @@ func New(opts Options) (*Model, error) {
 	}
 	if m.exec == nil {
 		m.exec = tea.ExecProcess
-	}
-	if opts.Scope.Scope.IsGlobal() {
-		m.mode = ModeGlobal
 	}
 	if err := m.reload(); err != nil {
 		return nil, err
@@ -279,6 +282,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // documented by construction.
 func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	pressed := msg.String()
+	// The picker is modal for the same reason the help is, and for one more:
+	// esc means cancel here, and letting it through would clear the filters of
+	// the list underneath on the way out.
+	if m.picker.open {
+		return m.handlePickerKey(pressed)
+	}
 	// The overlay is modal: it answers only the keys that close it, so nothing
 	// is edited by a keystroke aimed at a screen that is covering the list.
 	if m.showHelp {
@@ -323,14 +332,6 @@ func (m *Model) startFilter() tea.Cmd {
 func (m *Model) editSelected() tea.Cmd {
 	if e := m.Selected(); e != nil {
 		return m.editItem("edit", *e)
-	}
-	return nil
-}
-
-// nextScope moves to the next list.
-func (m *Model) nextScope() tea.Cmd {
-	if err := m.cycleScope(); err != nil {
-		m.err = err
 	}
 	return nil
 }
@@ -478,7 +479,7 @@ func (m *Model) reload() error {
 		entries []store.Entry
 		err     error
 	)
-	if m.mode == ModeAll {
+	if m.view.merged {
 		entries, err = m.store.ListAll(store.Active)
 	} else {
 		entries, err = m.store.List(m.currentScope(), store.Active)
@@ -518,13 +519,8 @@ func (m *Model) applyFilters() {
 	m.clampCursor()
 }
 
-// currentScope is the scope a non-merged mode lists.
-func (m *Model) currentScope() store.Scope {
-	if m.mode == ModeGlobal {
-		return store.Global
-	}
-	return m.scope.Scope
-}
+// currentScope is the scope a non-merged view lists.
+func (m *Model) currentScope() store.Scope { return m.view.scope }
 
 // Entries is what is on screen, in display order: the loaded listing with the
 // filters applied.

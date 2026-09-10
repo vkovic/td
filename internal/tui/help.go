@@ -58,8 +58,8 @@ func keyMap() []binding {
 			run: (*Model).startFilter},
 		{keys: []string{"t"}, help: "cycle the tag filter", short: "tag", rank: 10,
 			run: func(m *Model) tea.Cmd { m.cycleTag(); return nil }},
-		{keys: []string{"g"}, help: "cycle the scope: this project, global, all", short: "scope", rank: 9,
-			run: (*Model).nextScope},
+		{keys: []string{"g"}, help: "pick the list to show: global, all, or a project", short: "scope", rank: 9,
+			run: (*Model).openPicker},
 
 		{keys: []string{"esc"}, help: "clear the filters",
 			run: func(m *Model) tea.Cmd { m.clearFilters(); return nil }},

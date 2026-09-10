@@ -85,10 +85,10 @@ watching one store would otherwise drive each other in a loop.
 | `d`        | move the selected item to the trash                    |
 | `/`        | filter by title                                        |
 | `t`        | cycle the tag filter                                   |
-| `g`        | cycle the scope: this project, global, all             |
+| `g`        | pick the list to show: global, all, or a project       |
 | `esc`      | clear the filters                                      |
 | `r`        | record hand edits, sweep, commit and push now          |
-| `?`        | show the keys                                          |
+| `?`        | show this help                                         |
 | `q`        | quit                                                   |
 
 `$EDITOR` is the only editing surface. There is no preview pane and no in-place
@@ -100,6 +100,21 @@ record hand edits, sweep the archive, commit, push — and honour `auto_commit`
 and `auto_push` exactly as `td done`, `td rm`, `td edit` and `td add` do. `r` is
 the exception: asking for the tail outright overrides both settings, the way
 `td commit` commits with `auto_commit` off.
+
+`g` opens the list picker: the global list, every scope merged, then every
+project under `~/.td/`, by name and including the ones with nothing open. `j`
+and `k` move, `⏎` picks, `esc` cancels and leaves the pane where it was. The
+cursor opens on the list already showing, so `g` `⏎` changes nothing. That is
+how you read another project's items without leaving the pane — `td ls -p acme`
+from a second shell is the same list.
+
+Picking is view state, like the filters. The pane files an `a` into the list on
+screen, so an add while `acme` is showing lands in `acme`; the merged view is
+the exception and keeps filing into the scope the directory resolved to, which
+is where `td add` would have put it. A refresh keeps the picked list, and
+starting `td` again opens on the marker's scope: nothing about the pick is
+written down, so the pane and `td ls` never disagree about what "this project"
+means.
 
 The merged view labels every row with the list it came from, the way
 `td ls --all` adds a `SCOPE` column, since that is the one view where two rows

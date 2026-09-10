@@ -42,7 +42,14 @@ func readmeKeys(t *testing.T) map[string]string {
 }
 
 // TestReadmeDocumentsEveryKey: the README is where someone looks before opening
-// the pane, so a key it does not mention is a key nobody finds.
+// the pane, so a key it does not mention is a key nobody finds — and a key it
+// describes as something else is worse, because the reader has no reason to
+// doubt it.
+//
+// The description is compared, not just the key. The table was parsed for both
+// columns from the first, and checking only the first let the `g` row go on
+// promising a three-way cycle for as long as nobody read it: a row nothing
+// asserts on is a row that rots.
 //
 // The arrows and the return key are written as symbols in the README and as
 // names in the table, and the environment table shares the README's pipe
@@ -58,8 +65,16 @@ func TestReadmeDocumentsEveryKey(t *testing.T) {
 			if sym, ok := symbols[key]; ok {
 				name = sym
 			}
-			if _, ok := documented[name]; ok {
-				found = true
+			does, ok := documented[name]
+			if !ok {
+				continue
+			}
+			found = true
+			// The README styles the names it mentions as code and the help
+			// cannot, so the comparison is of the words rather than of the
+			// markup around them.
+			if unstyled(does) != unstyled(b.help) {
+				t.Errorf("the README says %s %q, the help says %q", name, does, b.help)
 			}
 		}
 		if !found {
@@ -67,6 +82,10 @@ func TestReadmeDocumentsEveryKey(t *testing.T) {
 		}
 	}
 }
+
+// unstyled drops the README's code ticks, so "open it in `$EDITOR`" and the
+// help's "open it in $EDITOR" are one description.
+func unstyled(s string) string { return strings.ReplaceAll(s, "`", "") }
 
 // TestReadmeDocumentsNoKeyThatDoesNothing: the other direction, so a key
 // removed from the table does not linger in the README.

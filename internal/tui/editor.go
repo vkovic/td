@@ -142,11 +142,16 @@ func (m *Model) addItem(title string) tea.Cmd {
 // creation writes the field.
 const SourceTUI = "tui"
 
-// currentAddScope is the list a new item is filed in. The merged view spans
-// every scope and has no single list of its own, so an add from there goes to
-// the scope this directory resolved to, which is where td add would have put it.
+// currentAddScope is the list a new item is filed in: the one on screen,
+// whether that is the directory's own scope, the global list or a project
+// picked with g. Filing anywhere else would put the item where the person who
+// typed it is not looking.
+//
+// The merged view is the exception. It spans every scope and has no single
+// list of its own, so an add from there goes to the scope this directory
+// resolved to, which is where td add would have put it.
 func (m *Model) currentAddScope() store.Scope {
-	if m.mode == ModeAll {
+	if m.view.merged {
 		return m.scope.Scope
 	}
 	return m.currentScope()
