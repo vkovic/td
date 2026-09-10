@@ -68,22 +68,32 @@ func (m *Model) View() string {
 
 	var b strings.Builder
 	if m.warn != nil {
-		fmt.Fprintln(&b, m.styles.warning.Render("warning: "+m.warn.Error()))
+		fmt.Fprintln(&b, m.styles.warning.Render(m.fit("warning: "+m.warn.Error())))
 	}
 
 	if len(m.shown) == 0 {
-		fmt.Fprintln(&b, m.styles.emptyMsg.Render(m.emptyLine()))
+		fmt.Fprintln(&b, m.styles.emptyMsg.Render(m.fit(m.emptyLine())))
 	} else {
 		b.WriteString(m.rows())
 	}
 
 	if m.prompt.open() {
-		fmt.Fprintln(&b, m.styles.prompt.Render(m.prompt.label+"> ")+m.prompt.value+"█")
+		// The prompt keeps its tail rather than its head: what you are typing
+		// is at the end of it, and a prompt that stops showing your keystrokes
+		// is worse than one that has scrolled its start away.
+		label := m.styles.prompt.Render(m.prompt.label + "> ")
+		value := m.fitTail(m.prompt.value+"█", ansi.StringWidth(label))
+		fmt.Fprintln(&b, label+value)
 	}
 	if m.err != nil {
-		fmt.Fprintln(&b, m.styles.warning.Render("error: "+m.err.Error()))
+		fmt.Fprintln(&b, m.styles.warning.Render(m.fit("error: "+m.err.Error())))
 	}
-	fmt.Fprintln(&b, m.styles.footer.Render(m.footer()))
+	// Rendered a line at a time: Lip Gloss pads every line of a multi-line
+	// block out to the widest one, which would trail the status line with
+	// however many spaces the legend is longer by.
+	for _, line := range strings.Split(m.footer(), "\n") {
+		fmt.Fprintln(&b, m.styles.footer.Render(line))
+	}
 	return b.String()
 }
 
@@ -197,9 +207,19 @@ func (m *Model) overdue(it *store.Item) bool {
 	return due.Before(today)
 }
 
+// minFilterEcho is how much of an active filter the status line keeps when the
+// pane is too narrow for all of it. The filter text is the explanation for why
+// rows are missing, so it is the last thing the line gives up.
+const minFilterEcho = 12
+
 // footer is what sits under the list: a status line naming the scope, the
 // counts, any active filter, what the last epilogue did and the external-change
 // note, and under it the key legend, drawn from the same table as the overlay.
+//
+// Both lines are fitted to the pane. Neither is bounded by anything but the
+// user: the filter echo is whatever was typed into /, and a project name has
+// no length limit at all, so a status line wider than the pane is ordinary use
+// rather than an edge case.
 func (m *Model) footer() string {
 	open := 0
 	for _, e := range m.shown {
@@ -209,7 +229,10 @@ func (m *Model) footer() string {
 	}
 	line := fmt.Sprintf("%s · %d open, %d total", m.scopeLabel(), open, len(m.shown))
 	if f := m.filters.describe(); f != "" {
-		line += " · filtered " + f
+		// Trimmed before the line is assembled: the filter sits in the middle,
+		// so trimming the whole line from the right would eat the status and
+		// the flash to keep filter text nobody can read anyway.
+		line += " · filtered " + m.fitFilter(f, ansi.StringWidth(line))
 	}
 	if m.status != "" {
 		line += " · " + m.status
@@ -217,7 +240,44 @@ func (m *Model) footer() string {
 	if m.flashing() {
 		line += " · " + externalFlash
 	}
-	return line + "\n" + legend()
+	if m.width > 0 {
+		line = ansi.Truncate(line, m.width, "…")
+	}
+	return line + "\n" + legend(m.width)
+}
+
+// fit trims a whole line to the pane, from the right. A width of zero is a
+// terminal that has not announced itself yet, and the line is left alone.
+func (m *Model) fit(line string) string {
+	if m.width <= 0 || ansi.StringWidth(line) <= m.width {
+		return line
+	}
+	return ansi.Truncate(line, m.width, "…")
+}
+
+// fitTail trims a line to the pane from the left, keeping its end. spent is
+// what has already been drawn on the line ahead of it.
+func (m *Model) fitTail(line string, spent int) string {
+	room := m.width - spent
+	if m.width <= 0 || room < minTitle || ansi.StringWidth(line) <= room {
+		return line
+	}
+	// TruncateLeft drops cells and then prepends the marker, so the marker's
+	// own column has to come out of the cells dropped.
+	return ansi.TruncateLeft(line, ansi.StringWidth(line)-room+1, "…")
+}
+
+// fitFilter trims the echoed filter to what the status line can spare, keeping
+// enough of it to recognise. spent is what the line costs before the filter.
+func (m *Model) fitFilter(f string, spent int) string {
+	if m.width <= 0 {
+		return f
+	}
+	room := max(m.width-spent-len(" · filtered "), minFilterEcho)
+	if ansi.StringWidth(f) <= room {
+		return f
+	}
+	return ansi.Truncate(f, room, "…")
 }
 
 // emptyLine says why there is nothing on screen. A list emptied by a filter is

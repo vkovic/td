@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/vkovic/td/internal/store"
 )
 
@@ -73,10 +75,56 @@ func TestOverlayListsExactlyTheKeyTable(t *testing.T) {
 	}
 }
 
+// TestLegendDropsEntriesToFit: the full legend is 100-odd columns and the pane
+// td was written for is 60, so a narrow pane gets fewer keys rather than a
+// legend wrapped over three lines.
+func TestLegendDropsEntriesToFit(t *testing.T) {
+	full := legend(0)
+	if len(full) <= 60 {
+		t.Fatalf("the full legend is %d columns, so this test proves nothing: %q", len(full), full)
+	}
+	for _, width := range []int{80, 60, 40, 20, 10} {
+		got := legend(width)
+		if len(got) > width {
+			t.Errorf("the legend at width %d is %d columns: %q", width, len(got), got)
+		}
+		// ? is the only thing on screen that says what the dropped keys were,
+		// so it is the one entry that survives every width.
+		if !strings.Contains(got, "? help") {
+			t.Errorf("the legend at width %d dropped the way to find the rest: %q", width, got)
+		}
+		// Whatever survives keeps the table's order, so the legend shortens
+		// rather than reshuffling as the pane is dragged narrower.
+		if !inTableOrder(got) {
+			t.Errorf("the legend at width %d is out of table order: %q", width, got)
+		}
+	}
+}
+
+// inTableOrder reports whether a rendered legend's entries appear in the order
+// keyMap lists them.
+func inTableOrder(rendered string) bool {
+	at := -1
+	for _, b := range keyMap() {
+		if b.short == "" {
+			continue
+		}
+		i := strings.Index(rendered, b.keys[0]+" "+b.short)
+		if i < 0 {
+			continue
+		}
+		if i < at {
+			return false
+		}
+		at = i
+	}
+	return true
+}
+
 // TestLegendComesFromTheSameTable: the footer's one-line legend is generated
 // too, so it cannot drift from the overlay.
 func TestLegendComesFromTheSameTable(t *testing.T) {
-	got := legend()
+	got := legend(0) // an unknown width keeps every entry
 	for _, b := range keyMap() {
 		if b.short == "" {
 			continue
@@ -176,7 +224,70 @@ func TestFooterCarriesTheScopeFilterStatusAndFlash(t *testing.T) {
 			t.Errorf("the footer is missing %q:\n%s", want, footer)
 		}
 	}
-	if !strings.Contains(footer, legend()) {
+	if !strings.Contains(footer, legend(0)) {
 		t.Errorf("the footer does not carry the key legend:\n%s", footer)
+	}
+}
+
+// TestPromptKeepsItsTail: a filter longer than the pane still shows the
+// keystrokes being typed. Trimming the prompt from the right would hide the
+// cursor and everything approaching it.
+func TestPromptKeepsItsTail(t *testing.T) {
+	s := newStore(t)
+	save(t, s, item{id: "aaa", title: "one", updated: ago(1)})
+
+	m := newModel(t, s)
+	resize(m, 40)
+	typeInto(m, "/", "the quick brown fox jumps over the lazy dog")
+
+	view := ansi.Strip(m.View())
+	var prompt string
+	for _, line := range strings.Split(view, "\n") {
+		if strings.HasPrefix(line, "filter>") {
+			prompt = line
+		}
+	}
+	if prompt == "" {
+		t.Fatalf("no prompt line in the view:\n%s", view)
+	}
+	if got := ansi.StringWidth(prompt); got > 40 {
+		t.Errorf("the prompt line is %d columns wide, want 40 or fewer: %q", got, prompt)
+	}
+	if !strings.HasSuffix(prompt, "lazy dog█") {
+		t.Errorf("the prompt hid what was being typed: %q", prompt)
+	}
+}
+
+// TestFooterFitsTheWidth: neither footer line is bounded by anything but the
+// user — a project name has no length limit and the filter echo is whatever
+// was typed — so both are fitted, and no line is padded out to the other's
+// width.
+func TestFooterFitsTheWidth(t *testing.T) {
+	s := newStore(t)
+	save(t, s, item{id: "aaa", title: "one", updated: ago(1)})
+
+	m := newModel(t, s)
+	resize(m, 60)
+	typeInto(m, "/", strings.Repeat("a very specific search ", 5))
+	press(m, "enter")
+	m.status = "2 hand edits recorded, 3 items archived, committed, pushed"
+	m.flashUntil = clock.Add(time.Minute)
+
+	for _, line := range strings.Split(m.footer(), "\n") {
+		if got := ansi.StringWidth(line); got > 60 {
+			t.Errorf("a footer line is %d columns wide, want 60 or fewer:\n%s", got, line)
+		}
+	}
+	// Enough of the filter survives to recognise what was typed: it is the
+	// explanation for the rows that are missing.
+	if !strings.Contains(m.footer(), "filtered /a very") {
+		t.Errorf("the footer does not echo the filter:\n%s", m.footer())
+	}
+
+	// And the whole view: no line of it is padded past the pane.
+	for _, line := range strings.Split(strings.TrimRight(m.View(), "\n"), "\n") {
+		if got := ansi.StringWidth(line); got > 60 {
+			t.Errorf("a view line is %d columns wide, want 60 or fewer:\n%q", got, ansi.Strip(line))
+		}
 	}
 }
