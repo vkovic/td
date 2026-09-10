@@ -59,6 +59,9 @@ func (m *Model) View() string {
 	if m.quitting {
 		return ""
 	}
+	if m.showHelp {
+		return m.helpView()
+	}
 
 	var b strings.Builder
 	if m.warn != nil {
@@ -153,8 +156,9 @@ func (m *Model) overdue(it *store.Item) bool {
 	return due.Before(today)
 }
 
-// footer is the one line under the list. Step 8 gives it the key legend and the
-// epilogue's last outcome; for now it names the scope and counts the rows.
+// footer is what sits under the list: a status line naming the scope, the
+// counts, any active filter, what the last epilogue did and the external-change
+// note, and under it the key legend, drawn from the same table as the overlay.
 func (m *Model) footer() string {
 	open := 0
 	for _, e := range m.shown {
@@ -166,14 +170,13 @@ func (m *Model) footer() string {
 	if f := m.filters.describe(); f != "" {
 		line += " · filtered " + f
 	}
-	line += " · j/k move · a add · e edit · x done · d delete · / filter · t tag · g scope · r refresh · q quit"
 	if m.status != "" {
 		line += " · " + m.status
 	}
 	if m.flashing() {
 		line += " · " + externalFlash
 	}
-	return line
+	return line + "\n" + legend()
 }
 
 // emptyLine says why there is nothing on screen. A list emptied by a filter is

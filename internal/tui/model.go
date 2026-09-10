@@ -109,6 +109,9 @@ type Model struct {
 
 	width, height int
 	quitting      bool
+
+	// showHelp is whether the key overlay is covering the list.
+	showHelp bool
 }
 
 // Options are what New needs. Store, Config and Scope come from the same
@@ -261,48 +264,66 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleKey applies a keystroke.
+// handleKey applies a keystroke, through the same table the help is written
+// from. A key that is not in the table does nothing, and a key in the table is
+// documented by construction.
 func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
-	switch msg.String() {
-	case "q", "ctrl+c":
-		m.quitting = true
-		return tea.Quit
-	case "j", "down":
-		m.moveCursor(1)
-	case "k", "up":
-		m.moveCursor(-1)
-	case "a":
-		if m.busy {
-			m.status = "still working"
-			return nil
+	pressed := msg.String()
+	// The overlay is modal: it answers only the keys that close it, so nothing
+	// is edited by a keystroke aimed at a screen that is covering the list.
+	if m.showHelp {
+		if pressed == "?" || pressed == "esc" || pressed == "q" {
+			m.showHelp = false
 		}
-		m.prompt = prompt{kind: promptAdd, label: "add"}
-	case "e", "enter":
-		return m.gate(func() tea.Cmd {
-			if e := m.Selected(); e != nil {
-				return m.editItem("edit", *e)
+		return nil
+	}
+	for _, b := range keyMap() {
+		for _, key := range b.keys {
+			if key == pressed {
+				return b.run(m)
 			}
-			return nil
-		})
-	case "x":
-		return m.gate(m.toggleDone)
-	case "d":
-		return m.gate(m.removeItem)
-	case "r":
-		return m.gate(m.refresh)
-	case "/":
-		m.prompt = prompt{kind: promptFilter, label: "filter", value: m.filters.title}
-	case "t":
-		m.cycleTag()
-	case "g":
-		if err := m.cycleScope(); err != nil {
-			m.err = err
 		}
-	case "esc":
-		m.filters = filters{}
-		m.applyFilters()
 	}
 	return nil
+}
+
+// startAdd opens the prompt that asks a new item's title.
+func (m *Model) startAdd() tea.Cmd {
+	if m.busy {
+		m.status = "still working"
+		return nil
+	}
+	m.prompt = prompt{kind: promptAdd, label: "add"}
+	return nil
+}
+
+// startFilter opens the prompt that narrows by title, offering whatever is
+// already filtering so narrowing further does not mean retyping it.
+func (m *Model) startFilter() tea.Cmd {
+	m.prompt = prompt{kind: promptFilter, label: "filter", value: m.filters.title}
+	return nil
+}
+
+// editSelected opens the item under the cursor, when there is one.
+func (m *Model) editSelected() tea.Cmd {
+	if e := m.Selected(); e != nil {
+		return m.editItem("edit", *e)
+	}
+	return nil
+}
+
+// nextScope moves to the next list.
+func (m *Model) nextScope() tea.Cmd {
+	if err := m.cycleScope(); err != nil {
+		m.err = err
+	}
+	return nil
+}
+
+// clearFilters puts the whole listing back on screen.
+func (m *Model) clearFilters() {
+	m.filters = filters{}
+	m.applyFilters()
 }
 
 // handlePromptKey drives the inline line editor. Enter submits, esc abandons,
