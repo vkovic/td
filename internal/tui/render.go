@@ -58,6 +58,12 @@ func newStyles(r *lipgloss.Renderer) styles {
 const doneRule = "── done ──"
 
 // View renders the whole screen.
+//
+// Everything is bounded by the pane in both directions. The list is windowed
+// to whatever height the chrome leaves it, because a pane that renders more
+// lines than it has hands the terminal the choice of which end to keep — and
+// the terminal keeps the tail, which for a list sorted newest-first is the
+// oldest items and never the one just added.
 func (m *Model) View() string {
 	if m.quitting {
 		return ""
@@ -66,51 +72,100 @@ func (m *Model) View() string {
 		return m.helpView()
 	}
 
-	var b strings.Builder
+	var head, tail []string
 	for _, line := range m.notice("warning: ", m.warn) {
-		fmt.Fprintln(&b, m.styles.warning.Render(line))
+		head = append(head, m.styles.warning.Render(line))
 	}
-
-	if len(m.shown) == 0 {
-		fmt.Fprintln(&b, m.styles.emptyMsg.Render(m.fit(m.emptyLine())))
-	} else {
-		b.WriteString(m.rows())
-	}
-
 	if m.prompt.open() {
 		// The prompt keeps its tail rather than its head: what you are typing
 		// is at the end of it, and a prompt that stops showing your keystrokes
 		// is worse than one that has scrolled its start away.
 		label := m.styles.prompt.Render(m.prompt.label + "> ")
-		value := m.fitTail(m.prompt.value+"█", ansi.StringWidth(label))
-		fmt.Fprintln(&b, label+value)
+		tail = append(tail, label+m.fitTail(m.prompt.value+"█", ansi.StringWidth(label)))
 	}
 	for _, line := range m.notice("error: ", m.err) {
-		fmt.Fprintln(&b, m.styles.warning.Render(line))
+		tail = append(tail, m.styles.warning.Render(line))
+	}
+
+	// The footer is two lines, and is built last because it reports how much of
+	// the list did not fit.
+	const footerLines = 2
+	body, above, below := m.body(m.capacity(len(head) + len(tail) + footerLines))
+
+	var b strings.Builder
+	for _, line := range head {
+		fmt.Fprintln(&b, line)
+	}
+	for _, line := range body {
+		fmt.Fprintln(&b, line)
+	}
+	for _, line := range tail {
+		fmt.Fprintln(&b, line)
 	}
 	// Rendered a line at a time: Lip Gloss pads every line of a multi-line
 	// block out to the widest one, which would trail the status line with
 	// however many spaces the legend is longer by.
-	for _, line := range strings.Split(m.footer(), "\n") {
+	for _, line := range strings.Split(m.footer(above, below), "\n") {
 		fmt.Fprintln(&b, m.styles.footer.Render(line))
 	}
-	return b.String()
+	// No trailing newline. A view that ends with one occupies a line more than
+	// it drew, and a view exactly as tall as the pane then scrolls its own top
+	// row off — which is the cursor, since the list opens at the newest item.
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
-// rows renders one line per item, with the rule dropped in where the listing
-// crosses from the open items to the done ones. SortEntries has already put
-// every open item ahead of every done one, so the crossing happens exactly once.
-func (m *Model) rows() string {
-	var b strings.Builder
+// capacity is how many lines the list itself may occupy: the pane, less the
+// chrome above and below it. Zero means the height is not known yet — Bubble
+// Tea sends it after the model is built — and the list is not windowed at all.
+//
+// At least one line is always given to the list. A pane too short for its own
+// chrome is already unusable; showing nothing of the list would not help.
+func (m *Model) capacity(chrome int) int {
+	if m.height <= 0 {
+		return 0
+	}
+	return max(m.height-chrome, 1)
+}
+
+// body is the list, windowed to capacity, with how many of its lines fell off
+// each end. The window moves the least that puts the cursor back on screen, so
+// the list holds still until the cursor would otherwise leave it.
+func (m *Model) body(capacity int) (lines []string, above, below int) {
+	if len(m.shown) == 0 {
+		m.top = 0
+		return []string{m.styles.emptyMsg.Render(m.fit(m.emptyLine()))}, 0, 0
+	}
+	lines, cursorLine := m.listLines()
+	if capacity <= 0 || len(lines) <= capacity {
+		m.top = 0
+		return lines, 0, 0
+	}
+	m.top = min(max(m.top, 0), len(lines)-capacity)
+	if cursorLine < m.top {
+		m.top = cursorLine
+	}
+	if cursorLine >= m.top+capacity {
+		m.top = cursorLine - capacity + 1
+	}
+	return lines[m.top : m.top+capacity], m.top, len(lines) - m.top - capacity
+}
+
+// listLines renders every line the list would take, and says which of them the
+// cursor is on. The rule counts as a line: it occupies a row on screen, so a
+// window that ignored it would render one line more than it meant to.
+func (m *Model) listLines() (lines []string, cursorLine int) {
 	ruled := false
 	for i, e := range m.shown {
 		if !ruled && e.Item.Done() && i > 0 {
-			fmt.Fprintln(&b, m.styles.rule.Render(doneRule))
+			lines = append(lines, m.styles.rule.Render(doneRule))
 			ruled = true
 		}
-		fmt.Fprintln(&b, m.row(e, i == m.cursor))
+		if i == m.cursor {
+			cursorLine = len(lines)
+		}
+		lines = append(lines, m.row(e, i == m.cursor))
 	}
-	return b.String()
+	return lines, cursorLine
 }
 
 // minTitle is the narrowest a title is ever squeezed to. A row cut below this
@@ -273,7 +328,7 @@ const minFilterEcho = 12
 // user: the filter echo is whatever was typed into /, and a project name has
 // no length limit at all, so a status line wider than the pane is ordinary use
 // rather than an edge case.
-func (m *Model) footer() string {
+func (m *Model) footer(above, below int) string {
 	open := 0
 	for _, e := range m.shown {
 		if !e.Item.Done() {
@@ -281,6 +336,11 @@ func (m *Model) footer() string {
 		}
 	}
 	line := fmt.Sprintf("%s · %d open, %d total", m.scopeLabel(), open, len(m.shown))
+	// A list that just stops at the bottom of the pane looks like the whole
+	// list. Saying what is off-screen is what makes the window visible.
+	if above > 0 || below > 0 {
+		line += fmt.Sprintf(" · %d above, %d below", above, below)
+	}
 	if f := m.filters.describe(); f != "" {
 		// Trimmed before the line is assembled: the filter sits in the middle,
 		// so trimming the whole line from the right would eat the status and

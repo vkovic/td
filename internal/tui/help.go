@@ -66,7 +66,7 @@ func keyMap() []binding {
 		{keys: []string{"r"}, help: "record hand edits, sweep, commit and push now", short: "refresh", rank: 11,
 			run: func(m *Model) tea.Cmd { return m.gate(m.refresh) }},
 		{keys: []string{"?"}, help: "show this help", short: "help", rank: 1,
-			run: func(m *Model) tea.Cmd { m.showHelp = !m.showHelp; return nil }},
+			run: func(m *Model) tea.Cmd { m.showHelp = !m.showHelp; m.helpTop = 0; return nil }},
 		{keys: []string{"q", "ctrl+c"}, help: "quit", short: "quit", rank: 2,
 			run: func(m *Model) tea.Cmd { m.quitting = true; return tea.Quit }},
 	}
@@ -126,10 +126,22 @@ func legendWidth(bindings []binding) int {
 
 // helpView is the overlay: every key, one per line, generated from the table.
 func (m *Model) helpView() string {
-	var b strings.Builder
-	fmt.Fprintln(&b, m.styles.title.Render("td — keys"))
-	fmt.Fprintln(&b)
+	lines := m.helpLines()
+	if m.height <= 0 || len(lines) <= m.height {
+		m.helpTop = 0
+		return strings.Join(lines, "\n")
+	}
+	// The overlay is the one screen that must never be the thing you cannot
+	// read: it is where the keys live, including the key that closes it. In a
+	// pane too short for it, it scrolls rather than losing its top.
+	lines[len(lines)-1] = m.styles.footer.Render(m.fit("j/k scrolls · ? or esc closes this"))
+	m.helpTop = min(max(m.helpTop, 0), len(lines)-m.height)
+	return strings.Join(lines[m.helpTop:m.helpTop+m.height], "\n")
+}
 
+// helpLines is the overlay's content, one line per line on screen, each fitted
+// to the pane's width.
+func (m *Model) helpLines() []string {
 	width := 0
 	table := keyMap()
 	for _, k := range table {
@@ -137,11 +149,14 @@ func (m *Model) helpView() string {
 			width = n
 		}
 	}
+
+	lines := []string{m.styles.title.Render(m.fit("td — keys")), ""}
 	for _, k := range table {
-		fmt.Fprintf(&b, "  %-*s  %s\n", width, k.name(), k.help)
+		lines = append(lines, m.fit(fmt.Sprintf("  %-*s  %s", width, k.name(), k.help)))
 	}
-	fmt.Fprintln(&b)
-	fmt.Fprintln(&b, m.styles.footer.Render("Every edit goes to $EDITOR: "+m.cfg.Editor))
-	fmt.Fprintln(&b, m.styles.footer.Render("? or esc closes this"))
-	return b.String()
+	return append(lines,
+		"",
+		m.styles.footer.Render(m.fit("Every edit goes to $EDITOR: "+m.cfg.Editor)),
+		m.styles.footer.Render(m.fit("? or esc closes this")),
+	)
 }

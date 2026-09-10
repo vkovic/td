@@ -110,6 +110,13 @@ type Model struct {
 	width, height int
 	quitting      bool
 
+	// top is the first list line on screen, and helpTop the first line of the
+	// overlay. Without them the pane rendered every line it had and let the
+	// terminal keep whichever end fit — the oldest items, since the newest
+	// sort first — with the cursor free to sit off-screen entirely.
+	top     int
+	helpTop int
+
 	// showHelp is whether the key overlay is covering the list.
 	showHelp bool
 }
@@ -275,8 +282,13 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	// The overlay is modal: it answers only the keys that close it, so nothing
 	// is edited by a keystroke aimed at a screen that is covering the list.
 	if m.showHelp {
-		if pressed == "?" || pressed == "esc" || pressed == "q" {
+		switch pressed {
+		case "?", "esc", "q":
 			m.showHelp = false
+		case "j", "down":
+			m.helpTop++
+		case "k", "up":
+			m.helpTop--
 		}
 		return nil
 	}

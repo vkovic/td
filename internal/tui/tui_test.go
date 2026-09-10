@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -165,6 +166,16 @@ func lines(view string) []string {
 // plain is a whole view with its styling stripped.
 func plain(view string) string { return ansi.Strip(view) }
 
+// listText is every line the list would occupy, un-windowed: the rows plus the
+// done rule. It is what the pane renders when the height is unbounded.
+func listText(m *Model) string {
+	lines, _ := m.listLines()
+	if len(lines) == 0 {
+		return ""
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
 // resize hands the model a terminal size, the way Bubble Tea does on start and
 // on every resize after it.
 func resize(m *Model, width int) {
@@ -227,6 +238,134 @@ func TestDoneRowsFitTheWidth(t *testing.T) {
 	}
 	if !strings.Contains(plain(styled), "…") {
 		t.Errorf("the done title was not elided:\n%s", plain(styled))
+	}
+}
+
+// TestTheViewNeverExceedsThePaneHeight: the other axis. A pane that renders
+// more lines than it has does not scroll — it hands the terminal the choice of
+// which end to keep, and the terminal keeps the tail. SortEntries puts the
+// newest item first, so what a td user loses that way is the item they just
+// added, which is the whole premise of the tool.
+func TestTheViewNeverExceedsThePaneHeight(t *testing.T) {
+	s := newStore(t)
+	for i := range 30 {
+		save(t, s, item{id: fmt.Sprintf("a%02d", i), title: fmt.Sprintf("item number %02d", i), updated: ago(i + 1)})
+	}
+	doneAt := ago(50)
+	save(t, s, item{id: "zzz", title: "a finished one", updated: ago(60), doneAt: &doneAt})
+
+	m := newModel(t, s)
+	for _, height := range []int{40, 24, 12, 8, 6, 4} {
+		m.Update(tea.WindowSizeMsg{Width: 60, Height: height})
+		for _, cursor := range []int{0, 5, 15, 30} {
+			m.cursor = cursor
+			m.clampCursor()
+			got := strings.Count(m.View(), "\n")
+			if got > height {
+				t.Errorf("at height %d with the cursor at %d the view is %d lines", height, cursor, got)
+			}
+		}
+	}
+}
+
+// TestTheCursorIsAlwaysOnScreen: the symptom that made the missing window
+// invisible. The pane opened with the cursor on the newest item, above the top
+// edge, so no ❯ appeared anywhere and j looked like it did nothing — it took
+// 22 presses before the cursor swam into view.
+func TestTheCursorIsAlwaysOnScreen(t *testing.T) {
+	s := newStore(t)
+	for i := range 30 {
+		save(t, s, item{id: fmt.Sprintf("a%02d", i), title: fmt.Sprintf("item number %02d", i), updated: ago(i + 1)})
+	}
+
+	m := newModel(t, s)
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+
+	// "On screen" means inside the pane, so every check here asserts the view
+	// fits the height as well as carrying the cursor. Without that, a view
+	// holding every one of thirty rows contains a ❯ and still shows the user
+	// nothing — which is exactly the bug this pins.
+	onScreen := func(what string) {
+		t.Helper()
+		view := plain(m.View())
+		if n := strings.Count(m.View(), "\n"); n > 12 {
+			t.Fatalf("%s: the view is %d lines in a 12-row pane", what, n)
+		}
+		if !strings.Contains(view, "❯") {
+			t.Fatalf("%s: no cursor on screen:\n%s", what, view)
+		}
+	}
+
+	onScreen("on open")
+	// And after every step of a walk from the top to the bottom and back.
+	for _, key := range []string{"j", "k"} {
+		for range len(m.Entries()) + 2 {
+			press(m, key)
+			onScreen(key)
+			// And it is the selected item that is on screen, not just some ❯.
+			selected := plain(m.row(m.Entries()[m.cursor], true))
+			if !strings.Contains(plain(m.View()), strings.TrimSpace(selected)) {
+				t.Fatalf("%s left the selected item off screen:\n%s", key, plain(m.View()))
+			}
+		}
+	}
+}
+
+// TestTheFooterSaysWhatIsOffScreen: a list that just stops at the bottom of
+// the pane looks like the whole list, which is how this went three milestones
+// without being noticed.
+func TestTheFooterSaysWhatIsOffScreen(t *testing.T) {
+	s := newStore(t)
+	for i := range 30 {
+		save(t, s, item{id: fmt.Sprintf("a%02d", i), title: fmt.Sprintf("item number %02d", i), updated: ago(i + 1)})
+	}
+
+	m := newModel(t, s)
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+	if got := plain(m.View()); !strings.Contains(got, "below") {
+		t.Errorf("the footer does not say the list continues past the pane:\n%s", got)
+	}
+
+	// A list that fits says nothing about a window, because there is not one.
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 60})
+	if got := plain(m.View()); strings.Contains(got, "below") {
+		t.Errorf("the footer reports a window for a list that fits:\n%s", got)
+	}
+}
+
+// TestTheHelpOverlayFitsThePane: the overlay is the one screen that must never
+// be the thing you cannot read — it holds the keys, including the key that
+// closes it. In a 12-row pane it used to render from "/ filter by title" down,
+// losing its title and the first six keys off the top.
+func TestTheHelpOverlayFitsThePane(t *testing.T) {
+	s := newStore(t)
+	save(t, s, item{id: "aaa", title: "one", updated: ago(1)})
+
+	m := newModel(t, s)
+	for _, height := range []int{40, 12, 8, 5} {
+		m.Update(tea.WindowSizeMsg{Width: 60, Height: height})
+		press(m, "?")
+		if got := strings.Count(m.View(), "\n"); got > height {
+			t.Errorf("at height %d the overlay is %d lines", height, got)
+		}
+		// The top of the overlay is its top, not whatever the terminal kept.
+		if !strings.Contains(plain(m.View()), "td — keys") {
+			t.Errorf("at height %d the overlay opens past its own title:\n%s", height, plain(m.View()))
+		}
+		press(m, "?")
+	}
+
+	// And it scrolls, so every key is reachable in a pane too short for it.
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 8})
+	press(m, "?")
+	for range 20 {
+		press(m, "j")
+	}
+	if got := plain(m.View()); !strings.Contains(got, "quit") {
+		t.Errorf("scrolling the overlay never reaches the last key:\n%s", got)
+	}
+	if got := strings.Count(m.View(), "\n"); got > 8 {
+		t.Errorf("the scrolled overlay is %d lines, want 8 or fewer", got)
 	}
 }
 
@@ -328,7 +467,7 @@ func TestMergedViewLabelsEachScope(t *testing.T) {
 	if m.scopeLabel() != "global" {
 		t.Fatalf("the pane opened on %q, want the global list", m.scopeLabel())
 	}
-	if got := plain(m.rows()); strings.Contains(got, "global") || strings.Contains(got, "acme") {
+	if got := plain(listText(m)); strings.Contains(got, "global") || strings.Contains(got, "acme") {
 		t.Errorf("a single-scope view labelled its rows, which says the same thing on every one:\n%s", got)
 	}
 
@@ -337,7 +476,7 @@ func TestMergedViewLabelsEachScope(t *testing.T) {
 		t.Fatalf("g landed on %q, want the merged view", m.scopeLabel())
 	}
 	// The label belongs to its own row, not to whichever row sorted first.
-	for _, line := range strings.Split(strings.TrimRight(plain(m.rows()), "\n"), "\n") {
+	for _, line := range strings.Split(strings.TrimRight(plain(listText(m)), "\n"), "\n") {
 		switch {
 		case strings.Contains(line, "first item") && !strings.Contains(line, "global"):
 			t.Errorf("the global row carries no scope: %s", line)
@@ -613,7 +752,7 @@ func TestFooterNamesTheScopeAndCounts(t *testing.T) {
 	save(t, s, item{id: "bbb", title: "shut", updated: ago(2), doneAt: done(ago(2))})
 
 	m := newModel(t, s)
-	footer := m.footer()
+	footer := m.footer(0, 0)
 	if !strings.Contains(footer, "global") {
 		t.Errorf("the footer does not name the scope: %q", footer)
 	}
@@ -635,7 +774,7 @@ func TestProjectScopeListsOnlyThatProject(t *testing.T) {
 	if got, want := strings.Join(titles(m), ","), "project item"; got != want {
 		t.Errorf("the project listing is %s, want %s", got, want)
 	}
-	if !strings.Contains(m.footer(), "acme") {
-		t.Errorf("the footer does not name the project: %q", m.footer())
+	if !strings.Contains(m.footer(0, 0), "acme") {
+		t.Errorf("the footer does not name the project: %q", m.footer(0, 0))
 	}
 }

@@ -218,7 +218,7 @@ func TestFooterCarriesTheScopeFilterStatusAndFlash(t *testing.T) {
 	m.status = "committed"
 	m.flashUntil = clock.Add(time.Minute)
 
-	footer := m.footer()
+	footer := m.footer(0, 0)
 	for _, want := range []string{"all scopes", "1 open, 1 total", "filtered /docs", "committed", externalFlash} {
 		if !strings.Contains(footer, want) {
 			t.Errorf("the footer is missing %q:\n%s", want, footer)
@@ -273,15 +273,15 @@ func TestFooterFitsTheWidth(t *testing.T) {
 	m.status = "2 hand edits recorded, 3 items archived, committed, pushed"
 	m.flashUntil = clock.Add(time.Minute)
 
-	for _, line := range strings.Split(m.footer(), "\n") {
+	for _, line := range strings.Split(m.footer(0, 0), "\n") {
 		if got := ansi.StringWidth(line); got > 60 {
 			t.Errorf("a footer line is %d columns wide, want 60 or fewer:\n%s", got, line)
 		}
 	}
 	// Enough of the filter survives to recognise what was typed: it is the
 	// explanation for the rows that are missing.
-	if !strings.Contains(m.footer(), "filtered /a very") {
-		t.Errorf("the footer does not echo the filter:\n%s", m.footer())
+	if !strings.Contains(m.footer(0, 0), "filtered /a very") {
+		t.Errorf("the footer does not echo the filter:\n%s", m.footer(0, 0))
 	}
 
 	// And the whole view: no line of it is padded past the pane.
