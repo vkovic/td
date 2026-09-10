@@ -133,7 +133,10 @@ func newRootCmdIO(stdout, stderr io.Writer, stdin io.Reader) *cobra.Command {
 		newUndoCmd(a),
 		newRemoveCmd(a),
 		newRestoreCmd(a),
+		newLsCmd(a),
+		newShowCmd(a),
 	)
+	root.AddCommand(newMaintenanceCmds(a)...)
 	return root
 }
 
