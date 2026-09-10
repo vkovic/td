@@ -107,6 +107,15 @@ func newRootCmdIO(stdout, stderr io.Writer, stdin io.Reader) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
+		// Cobra's own handling of an unrecognized subcommand produces a plain
+		// error; naming it here makes it classify as usage, like every other
+		// command line mistake.
+		Args: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return usagef("unknown command %q for %q", args[0], cmd.CommandPath())
+			}
+			return nil
+		},
 	}
 	root.SetOut(stdout)
 	root.SetErr(stderr)
@@ -137,6 +146,8 @@ func newRootCmdIO(stdout, stderr io.Writer, stdin io.Reader) *cobra.Command {
 		newShowCmd(a),
 	)
 	root.AddCommand(newMaintenanceCmds(a)...)
+
+	markUsageErrors(root)
 	return root
 }
 
@@ -169,9 +180,17 @@ func (a *app) setup() error {
 // Execute runs the CLI and returns the process's exit code.
 func Execute() int {
 	root := newRootCmd(os.Stdout, os.Stderr)
-	if err := root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "td:", err)
-		return 1
+	// ExecuteC hands back the command that failed, so a usage error can print
+	// the usage of the subcommand that was actually typed.
+	cmd, err := root.ExecuteC()
+	if err == nil {
+		return exitOK
 	}
-	return 0
+	fmt.Fprintln(os.Stderr, "td:", err)
+	code := exitCode(err)
+	if code == exitUsage && cmd != nil {
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, cmd.UsageString())
+	}
+	return code
 }

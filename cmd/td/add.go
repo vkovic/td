@@ -44,10 +44,10 @@ func newAddCmd(a *app) *cobra.Command {
 func (a *app) add(title string, f addFlags) error {
 	title = strings.TrimSpace(title)
 	if title == "" {
-		return fmt.Errorf("an item needs a title")
+		return usagef("an item needs a title")
 	}
 	if f.body != "" && f.bodyFile != "" {
-		return fmt.Errorf("use either --body or --body-file, not both")
+		return usagef("use either --body or --body-file, not both")
 	}
 
 	body, err := readBody(f.body, f.bodyFile, a.stdin())
@@ -67,7 +67,7 @@ func (a *app) add(title string, f addFlags) error {
 	if f.due != "" {
 		due, err := store.ParseDate(f.due)
 		if err != nil {
-			return err
+			return &usageError{err: err}
 		}
 		it.Due = &due
 	}

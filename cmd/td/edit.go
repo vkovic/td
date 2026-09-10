@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 
 	"github.com/vkovic/td/internal/store"
@@ -46,14 +44,14 @@ func newEditCmd(a *app) *cobra.Command {
 // edit applies the named changes to every item given.
 func (a *app) edit(prefixes []string, f editFlags, changed func(string) bool) error {
 	if f.body != "" && f.bodyFile != "" {
-		return fmt.Errorf("use either --body or --body-file, not both")
+		return usagef("use either --body or --body-file, not both")
 	}
 	if (changed("body") || changed("body-file")) && changed("append") {
-		return fmt.Errorf("use either a replacement body or --append, not both")
+		return usagef("use either a replacement body or --append, not both")
 	}
 	if !changed("title") && !changed("body") && !changed("body-file") &&
 		!changed("append") && !changed("tag") && !changed("due") {
-		return fmt.Errorf("edit needs something to change: --title, --body, --body-file, --append, --tag, or --due")
+		return usagef("edit needs something to change: --title, --body, --body-file, --append, --tag, or --due")
 	}
 
 	entries, err := a.resolveAll(prefixes, store.Active)
@@ -73,7 +71,7 @@ func (a *app) edit(prefixes []string, f editFlags, changed func(string) bool) er
 		it := e.Item
 		if changed("title") {
 			if f.title == "" {
-				return fmt.Errorf("an item needs a title")
+				return usagef("an item needs a title")
 			}
 			it.Title = f.title
 		}
@@ -92,7 +90,7 @@ func (a *app) edit(prefixes []string, f editFlags, changed func(string) bool) er
 			} else {
 				due, err := store.ParseDate(f.due)
 				if err != nil {
-					return err
+					return &usageError{err: err}
 				}
 				it.Due = &due
 			}

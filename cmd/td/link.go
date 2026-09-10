@@ -54,7 +54,7 @@ func (a *app) link(name string) error {
 	}
 	name, err = store.CleanProjectName(name)
 	if err != nil {
-		return err
+		return &usageError{err: err}
 	}
 
 	var created []string
