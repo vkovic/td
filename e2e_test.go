@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -512,6 +513,44 @@ func TestProvenanceFlags(t *testing.T) {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("the item file does not carry %q:\n%s", want, body)
 		}
+	}
+}
+
+// readSources opens every .go file in the module, for the cache's benefit
+// only. Nothing is done with the contents.
+func readSources() error {
+	return filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && (d.Name() == ".git" || d.Name() == "td-plugin") {
+			return fs.SkipDir
+		}
+		if d.IsDir() || filepath.Ext(path) != ".go" {
+			return nil
+		}
+		_, err = os.ReadFile(path)
+		return err
+	})
+}
+
+// TestSourcesAreInTheCacheKey opens every source file the binary was built
+// from, so that changing any of them invalidates this package's cached result.
+//
+// This suite links none of td. It shells out to go build in TestMain, which
+// the cache cannot see, and cmd/td is package main and so cannot be imported
+// by anything. Without this, a change anywhere in td leaves the cached PASS
+// standing and the contract reports green without having run — which is the
+// one result a contract suite must never give.
+//
+// It has to be a test rather than a step in TestMain, and that is the whole
+// reason the first attempt at this changed nothing. The go command records
+// only the files a test opens once m.Run is under way, so the identical read
+// performed in TestMain is invisible to the cache. Moving it back there costs
+// nothing visible: the suite still passes, and it silently stops guarding.
+func TestSourcesAreInTheCacheKey(t *testing.T) {
+	if err := readSources(); err != nil {
+		t.Fatal(err)
 	}
 }
 
