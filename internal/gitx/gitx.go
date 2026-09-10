@@ -181,6 +181,11 @@ func (r *Repo) defaultRemote() (string, error) {
 	return remotes[0], nil
 }
 
+// Run executes an arbitrary git command against the repository root and
+// returns its standard output. It is the escape hatch for the handful of
+// queries that do not deserve a method of their own.
+func (r *Repo) Run(args ...string) (string, error) { return r.run(args...) }
+
 // RunError is a git command that ran and failed, carrying what git printed so
 // the message a user sees is git's own.
 type RunError struct {

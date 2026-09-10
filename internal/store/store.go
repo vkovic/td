@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/vkovic/td/internal/gitx"
 )
@@ -124,9 +125,16 @@ func Open(root string) (*Store, error) {
 // Root is the store's directory.
 func (s *Store) Root() string { return s.root }
 
-// storeGitignore keeps trash out of git: deleted items stay on the machine that
-// removed them and never reach a remote.
-const storeGitignore = "**/deleted/\n"
+// LockName is the file the epilogue takes an exclusive lock on, so a CLI
+// command and the TUI cannot race on the git index.
+const LockName = ".td.lock"
+
+// LockPath is the store's lock file.
+func (s *Store) LockPath() string { return filepath.Join(s.root, LockName) }
+
+// storeGitignore keeps trash and the lock file out of git: deleted items stay
+// on the machine that removed them and never reach a remote.
+const storeGitignore = "**/deleted/\n" + LockName + "\n"
 
 // defaultConfigTemplate documents every key with its value commented out, so
 // the defaults live in one place — internal/config — and this file never drifts
@@ -200,6 +208,14 @@ func (s *Store) Save(scope Scope, area Area, it *Item) (Ref, error) {
 	if err := writeAtomic(path, body); err != nil {
 		return Ref{}, err
 	}
+	// Pin the file's modification time to the item's own updated timestamp.
+	// That is what lets the bump detector tell a hand edit — which moves mtime
+	// past updated — from td's own writes, which leave the two equal.
+	if !it.Updated.IsZero() {
+		if err := os.Chtimes(path, time.Time{}, it.Updated); err != nil {
+			return Ref{}, fmt.Errorf("setting the modification time of %s: %w", path, err)
+		}
+	}
 
 	// Drop a stale file for the same id left by a previous title.
 	stale, err := s.pathsForID(dir, it.ID)
@@ -215,6 +231,24 @@ func (s *Store) Save(scope Scope, area Area, it *Item) (Ref, error) {
 		}
 	}
 	return Ref{Scope: scope, Area: area, Path: path}, nil
+}
+
+// HandEdited reports whether a file has been changed outside td since the item
+// in it was last written: its modification time has moved past the updated
+// timestamp in its own frontmatter. td's own writes pin the two together, so
+// this is true only for an edit td did not make.
+//
+// An item with no updated timestamp has never been written by td and counts as
+// hand edited, so it gets one.
+func HandEdited(e Entry) (bool, error) {
+	info, err := os.Stat(e.Ref.Path)
+	if err != nil {
+		return false, fmt.Errorf("checking %s: %w", e.Ref.Path, err)
+	}
+	if e.Item.Updated.IsZero() {
+		return true, nil
+	}
+	return info.ModTime().After(e.Item.Updated), nil
 }
 
 // Load reads and parses one item file.
