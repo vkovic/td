@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/vkovic/td/internal/store"
 )
@@ -100,45 +101,77 @@ func (m *Model) rows() string {
 	return b.String()
 }
 
+// minTitle is the narrowest a title is ever squeezed to. A pane too narrow to
+// hold the other cells and this much title overruns by the difference: a row
+// cut to a column of ellipses says nothing at all, and a stub of a title is
+// what makes one row tell itself apart from the next.
+const minTitle = 8
+
 // row renders one item: the cursor, a done marker, the title, its tags, its due
 // date and how long ago it was updated. Empty fields take no space at all, so a
 // list with no tags carries no gap where the tags would be.
+//
+// The title is the one cell that gives way when the row is wider than the pane.
+// Everything else is short, fixed, and the answer to a question — when is this
+// due, how long has it sat there — so a row wraps into two lines only when the
+// pane is too narrow to hold even a stub of a title.
 func (m *Model) row(e store.Entry, selected bool) string {
-	cells := []string{}
-
 	marker := "  "
 	if selected {
 		marker = m.styles.cursor.Render("❯ ")
 	}
-	cells = append(cells, marker)
 
 	box := "[ ]"
 	if e.Item.Done() {
 		box = "[x]"
 	}
-	cells = append(cells, box)
 
-	title := e.Item.Title
-	if e.Item.Done() {
-		cells = append(cells, m.styles.done.Render(title))
-	} else {
-		cells = append(cells, m.styles.title.Render(title))
-	}
-
+	before := []string{marker, box}
+	var after []string
 	if len(e.Item.Tags) > 0 {
-		cells = append(cells, m.styles.tags.Render("#"+strings.Join(e.Item.Tags, " #")))
+		after = append(after, m.styles.tags.Render("#"+strings.Join(e.Item.Tags, " #")))
 	}
 	if e.Item.Due != nil {
 		text := "due " + e.Item.Due.String()
 		if m.overdue(e.Item) {
-			cells = append(cells, m.styles.overdue.Render(text))
+			after = append(after, m.styles.overdue.Render(text))
 		} else {
-			cells = append(cells, m.styles.due.Render(text))
+			after = append(after, m.styles.due.Render(text))
 		}
 	}
-	cells = append(cells, m.styles.updated.Render(relative(e.Item.Updated, m.now())))
+	after = append(after, m.styles.updated.Render(relative(e.Item.Updated, m.now())))
 
-	return strings.Join(cells, " ")
+	style := m.styles.title
+	if e.Item.Done() {
+		style = m.styles.done
+	}
+	title := m.fitTitle(style.Render(e.Item.Title), before, after)
+
+	return strings.Join(append(append(before, title), after...), " ")
+}
+
+// fitTitle trims a rendered title to whatever the other cells leave of the
+// pane's width. Before the first WindowSizeMsg the width is unknown, and a row
+// renders at whatever length it comes to.
+//
+// The trim runs on the styled title, never on the raw one. Lip Gloss wraps a
+// done title's strikethrough around every rune, so its rendered bytes are
+// several times its display width; slicing the raw string and styling after
+// would look right in every test that strips the styling and corrupt exactly
+// the rows that carry it.
+func (m *Model) fitTitle(title string, before, after []string) string {
+	if m.width <= 0 {
+		return title
+	}
+	spent := len(before) + len(after) // one space between every pair of cells
+	for _, cell := range append(append([]string{}, before...), after...) {
+		spent += ansi.StringWidth(cell)
+	}
+	room := max(m.width-spent, minTitle)
+	if ansi.StringWidth(title) <= room {
+		return title
+	}
+	return ansi.Truncate(title, room, "…")
 }
 
 // overdue reports whether an open item's due date has passed. A done item is

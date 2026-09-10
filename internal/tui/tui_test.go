@@ -165,6 +165,105 @@ func lines(view string) []string {
 // plain is a whole view with its styling stripped.
 func plain(view string) string { return ansi.Strip(view) }
 
+// resize hands the model a terminal size, the way Bubble Tea does on start and
+// on every resize after it.
+func resize(m *Model, width int) {
+	m.Update(tea.WindowSizeMsg{Width: width, Height: 24})
+}
+
+// TestRowsFitTheWidth: a title longer than the pane is elided to fit, and the
+// cells that answer a question — the tags, the due date, the age — survive
+// intact, because a row that drops them to keep 30 more characters of title
+// has kept the wrong thing.
+func TestRowsFitTheWidth(t *testing.T) {
+	s := newStore(t)
+	long := strings.Repeat("wire the epilogue ", 7) // 126 columns
+	save(t, s, item{id: "aaa", title: long, tags: []string{"cli"}, due: "2026-09-30", updated: ago(3)})
+
+	m := newModel(t, s)
+	resize(m, 60)
+
+	line := plain(m.row(m.Entries()[0], true))
+	if got := ansi.StringWidth(line); got != 60 {
+		t.Errorf("the row is %d columns wide, want 60:\n%s", got, line)
+	}
+	for _, want := range []string{"#cli", "due 2026-09-30", "3h ago"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("the fit dropped %q from the row:\n%s", want, line)
+		}
+	}
+	if !strings.Contains(line, "…") {
+		t.Errorf("the title was not elided:\n%s", line)
+	}
+
+	// A pane with room to spare leaves the title alone.
+	resize(m, 200)
+	if line := plain(m.row(m.Entries()[0], true)); !strings.Contains(line, long) {
+		t.Errorf("a wide pane elided a title that fits:\n%s", line)
+	}
+}
+
+// TestDoneRowsFitTheWidth: the fit has to run on the styled title. Lip Gloss
+// wraps a done title's strikethrough around every rune, so the rendered string
+// is several times its display width — a fit measured in bytes, or applied
+// before styling, looks right everywhere except the rows that carry styling.
+func TestDoneRowsFitTheWidth(t *testing.T) {
+	s := newStore(t)
+	long := strings.Repeat("wire the epilogue ", 7)
+	doneAt := ago(1)
+	save(t, s, item{id: "aaa", title: long, updated: ago(3), doneAt: &doneAt})
+
+	m := newModel(t, s)
+	resize(m, 60)
+
+	// Measured on the styled output, before plain() strips it: that is what
+	// the terminal is given.
+	styled := m.row(m.Entries()[0], false)
+	if got := ansi.StringWidth(styled); got != 60 {
+		t.Errorf("the done row is %d columns wide, want 60:\n%q", got, styled)
+	}
+	if len(styled) <= 60 {
+		t.Fatalf("the done row carries no styling, so this test proves nothing: %q", styled)
+	}
+	if !strings.Contains(plain(styled), "…") {
+		t.Errorf("the done title was not elided:\n%s", plain(styled))
+	}
+}
+
+// TestNarrowPaneKeepsAStubOfTitle: below the width the fixed cells already
+// need, the row overruns — but by as little as a title stub costs, not by the
+// whole title. A row cut to a column of ellipses tells one item from another
+// not at all.
+func TestNarrowPaneKeepsAStubOfTitle(t *testing.T) {
+	s := newStore(t)
+	long := strings.Repeat("wire the epilogue ", 7)
+	save(t, s, item{id: "aaa", title: long, tags: []string{"cli", "epilogue"}, due: "2026-09-30", updated: ago(3)})
+
+	m := newModel(t, s)
+	resize(m, 30)
+
+	line := plain(m.row(m.Entries()[0], false))
+	if got := ansi.StringWidth(line); got > 60 {
+		t.Errorf("a 30-column pane rendered a %d-column row, want the title cut back to a stub:\n%s", got, line)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(line), "[ ] wire") {
+		t.Errorf("the row lost its title entirely:\n%s", line)
+	}
+}
+
+// TestRowsAreUnfittedBeforeTheFirstSize: Bubble Tea sends the size after the
+// model is built, and a row rendered before it arrives has no width to fit to.
+func TestRowsAreUnfittedBeforeTheFirstSize(t *testing.T) {
+	s := newStore(t)
+	long := strings.Repeat("wire the epilogue ", 7)
+	save(t, s, item{id: "aaa", title: long, updated: ago(3)})
+
+	m := newModel(t, s)
+	if line := plain(m.row(m.Entries()[0], false)); !strings.Contains(line, long) {
+		t.Errorf("a row was fitted before any width was known:\n%s", line)
+	}
+}
+
 // TestListOrder: the TUI shows what td ls would show, in the same order, open
 // items first and done items after them.
 func TestListOrder(t *testing.T) {
