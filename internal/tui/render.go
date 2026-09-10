@@ -162,7 +162,7 @@ func (m *Model) footer() string {
 			open++
 		}
 	}
-	line := fmt.Sprintf("%s · %d open, %d total · j/k move · a add · e edit · q quit",
+	line := fmt.Sprintf("%s · %d open, %d total · j/k move · a add · e edit · x done · d delete · r refresh · q quit",
 		m.scopeLabel(), open, len(m.entries))
 	if m.status != "" {
 		line += " · " + m.status

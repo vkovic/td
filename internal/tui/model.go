@@ -67,6 +67,12 @@ type Model struct {
 	status string
 	err    error
 
+	// busy is true while an epilogue is in flight. Only one runs at a time:
+	// the epilogue takes a blocking flock on the store, so a second one
+	// dispatched while the first holds it would wait on a lock this process
+	// already owns — and the keystroke that dispatched it would look ignored.
+	busy bool
+
 	// now is the clock, so a test can pin what counts as overdue and what a
 	// relative timestamp reads as.
 	now func() time.Time
@@ -162,11 +168,24 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	case "k", "up":
 		m.moveCursor(-1)
 	case "a":
+		if m.busy {
+			m.status = "still working"
+			return nil
+		}
 		m.prompt = prompt{kind: promptAdd, label: "add"}
 	case "e", "enter":
-		if e := m.Selected(); e != nil {
-			return m.editItem("edit", *e)
-		}
+		return m.gate(func() tea.Cmd {
+			if e := m.Selected(); e != nil {
+				return m.editItem("edit", *e)
+			}
+			return nil
+		})
+	case "x":
+		return m.gate(m.toggleDone)
+	case "d":
+		return m.gate(m.removeItem)
+	case "r":
+		return m.gate(m.refresh)
 	}
 	return nil
 }
@@ -213,6 +232,11 @@ func (m *Model) afterEditor(msg editorFinishedMsg) tea.Cmd {
 type epilogueDoneMsg struct {
 	res epilogue.Result
 	err error
+
+	// hasRemote is whether the store had somewhere to push to. Push reports
+	// success for a store with no remote, since doing nothing succeeded, so
+	// the status line has to ask the repository rather than trust the result.
+	hasRemote bool
 }
 
 // runEpilogue performs the shared tail off the event loop.
@@ -221,9 +245,16 @@ type epilogueDoneMsg struct {
 // flock on the store, held by whatever CLI process is mid-command, and waiting
 // for it on the UI goroutine would freeze the pane.
 func (m *Model) runEpilogue(message string) tea.Cmd {
+	return m.runEpilogueWith(m.cfg, message)
+}
+
+// runEpilogueWith is runEpilogue over a configuration the caller chose, which
+// is how the on-demand refresh forces a commit and a push.
+func (m *Model) runEpilogueWith(cfg config.Config, message string) tea.Cmd {
+	m.busy = true
 	// The command runs on another goroutine, so it closes over copies rather
 	// than reaching back into the model, which the event loop owns.
-	cfg, st, now := m.cfg, m.store, m.now
+	st, now := m.store, m.now
 	return func() tea.Msg {
 		res, err := epilogue.Run(epilogue.Options{
 			Store:   st,
@@ -232,23 +263,42 @@ func (m *Model) runEpilogue(message string) tea.Cmd {
 			Message: message,
 			Now:     now,
 		})
-		return epilogueDoneMsg{res: res, err: err}
+		// Asked here rather than in the handler: it shells out to git, and the
+		// event loop is the one goroutine that must not wait on anything.
+		hasRemote, _ := st.Repo().HasRemote()
+		return epilogueDoneMsg{res: res, err: err, hasRemote: hasRemote}
 	}
 }
 
 // afterEpilogue records what the run did and re-reads the list, which is where
 // a bump, a sweep and the change itself all become visible at once.
 func (m *Model) afterEpilogue(msg epilogueDoneMsg) {
+	m.busy = false
 	if msg.err != nil {
 		m.err = msg.err
 		return
 	}
 	m.err = nil
-	m.status = describe(msg.res)
+	m.status = describe(msg.res, msg.hasRemote)
 	if err := m.reload(); err != nil {
 		m.err = err
 	}
 }
+
+// gate dispatches an action unless an epilogue is already running. A pane in
+// the middle of a commit refuses another one rather than queuing it, because a
+// mutation decided against a list that is about to be re-read is a mutation
+// against the wrong item.
+func (m *Model) gate(action func() tea.Cmd) tea.Cmd {
+	if m.busy {
+		m.status = "still working"
+		return nil
+	}
+	return action()
+}
+
+// Busy reports whether an epilogue is in flight.
+func (m *Model) Busy() bool { return m.busy }
 
 // moveCursor steps the selection, clamping at both ends rather than wrapping:
 // a held j must stop at the last item, not cycle back to the first.
