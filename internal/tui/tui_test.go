@@ -147,8 +147,8 @@ var keyTypes = map[string]tea.KeyType{
 // titles names the loaded listing in display order, so a failure reads as a
 // sequence rather than a struct dump.
 func titles(m *Model) []string {
-	out := make([]string, len(m.entries))
-	for i, e := range m.entries {
+	out := make([]string, len(m.Entries()))
+	for i, e := range m.Entries() {
 		out[i] = e.Item.Title
 	}
 	return out

@@ -65,8 +65,8 @@ func (m *Model) View() string {
 		fmt.Fprintln(&b, m.styles.warning.Render("warning: "+m.warn.Error()))
 	}
 
-	if len(m.entries) == 0 {
-		fmt.Fprintln(&b, m.styles.emptyMsg.Render("Nothing here yet."))
+	if len(m.shown) == 0 {
+		fmt.Fprintln(&b, m.styles.emptyMsg.Render(m.emptyLine()))
 	} else {
 		b.WriteString(m.rows())
 	}
@@ -87,7 +87,7 @@ func (m *Model) View() string {
 func (m *Model) rows() string {
 	var b strings.Builder
 	ruled := false
-	for i, e := range m.entries {
+	for i, e := range m.shown {
 		if !ruled && e.Item.Done() && i > 0 {
 			fmt.Fprintln(&b, m.styles.rule.Render(doneRule))
 			ruled = true
@@ -157,13 +157,16 @@ func (m *Model) overdue(it *store.Item) bool {
 // epilogue's last outcome; for now it names the scope and counts the rows.
 func (m *Model) footer() string {
 	open := 0
-	for _, e := range m.entries {
+	for _, e := range m.shown {
 		if !e.Item.Done() {
 			open++
 		}
 	}
-	line := fmt.Sprintf("%s · %d open, %d total · j/k move · a add · e edit · x done · d delete · r refresh · q quit",
-		m.scopeLabel(), open, len(m.entries))
+	line := fmt.Sprintf("%s · %d open, %d total", m.scopeLabel(), open, len(m.shown))
+	if f := m.filters.describe(); f != "" {
+		line += " · filtered " + f
+	}
+	line += " · j/k move · a add · e edit · x done · d delete · / filter · t tag · g scope · r refresh · q quit"
 	if m.status != "" {
 		line += " · " + m.status
 	}
@@ -171,6 +174,16 @@ func (m *Model) footer() string {
 		line += " · " + externalFlash
 	}
 	return line
+}
+
+// emptyLine says why there is nothing on screen. A list emptied by a filter is
+// a different thing from an empty list, and the difference is not otherwise
+// visible.
+func (m *Model) emptyLine() string {
+	if !m.filters.none() && len(m.entries) > 0 {
+		return "Nothing matches " + m.filters.describe() + "."
+	}
+	return "Nothing here yet."
 }
 
 // scopeLabel names the list on screen: the project or global name for a single

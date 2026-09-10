@@ -17,6 +17,8 @@ const (
 	promptNone promptKind = iota
 	// promptAdd is asking for a new item's title.
 	promptAdd
+	// promptFilter is asking what to narrow the list to.
+	promptFilter
 )
 
 // prompt is the one-line editor that opens over the footer. It is deliberately

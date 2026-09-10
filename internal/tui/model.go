@@ -8,6 +8,7 @@ package tui
 
 import (
 	"os/exec"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -50,9 +51,18 @@ type Model struct {
 	cfg   config.Config
 	scope store.ScopeChoice
 
-	mode    ScopeMode
+	mode ScopeMode
+
+	// entries is everything the current scope holds, and shown is what
+	// survives the filters. The cursor indexes shown, because the cursor is a
+	// thing on screen.
 	entries []store.Entry
+	shown   []store.Entry
 	cursor  int
+
+	// filters narrow what is shown. They are view state, not part of the
+	// listing, so a reload re-applies them rather than clearing them.
+	filters filters
 
 	// warn holds the joined error from a listing that skipped an unparsable
 	// file. It is shown as a warning line: the rest of the list is still worth
@@ -280,6 +290,17 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return m.gate(m.removeItem)
 	case "r":
 		return m.gate(m.refresh)
+	case "/":
+		m.prompt = prompt{kind: promptFilter, label: "filter", value: m.filters.title}
+	case "t":
+		m.cycleTag()
+	case "g":
+		if err := m.cycleScope(); err != nil {
+			m.err = err
+		}
+	case "esc":
+		m.filters = filters{}
+		m.applyFilters()
 	}
 	return nil
 }
@@ -304,8 +325,12 @@ func (m *Model) handlePromptKey(msg tea.KeyMsg) tea.Cmd {
 
 // submitPrompt acts on a finished prompt.
 func (m *Model) submitPrompt(p prompt) tea.Cmd {
-	if p.kind == promptAdd {
+	switch p.kind {
+	case promptAdd:
 		return m.addItem(p.value)
+	case promptFilter:
+		m.filters.title = strings.TrimSpace(p.value)
+		m.applyFilters()
 	}
 	return nil
 }
@@ -407,8 +432,8 @@ func (m *Model) moveCursor(delta int) {
 // clampCursor keeps the cursor on a row that exists, which is also what a
 // reload needs after the listing has shrunk underneath it.
 func (m *Model) clampCursor() {
-	if m.cursor >= len(m.entries) {
-		m.cursor = len(m.entries) - 1
+	if m.cursor >= len(m.shown) {
+		m.cursor = len(m.shown) - 1
 	}
 	if m.cursor < 0 {
 		m.cursor = 0
@@ -441,8 +466,28 @@ func (m *Model) reload() error {
 
 	store.SortEntries(entries)
 	m.entries = entries
-	m.clampCursor()
+	m.applyFilters()
 	return nil
+}
+
+// applyFilters recomputes what is on screen and keeps the cursor on the item it
+// was on, rather than on whatever has moved into its old position.
+func (m *Model) applyFilters() {
+	var was string
+	if e := m.Selected(); e != nil {
+		was = e.Item.ID
+	}
+	m.shown = m.filters.apply(m.entries)
+	if was != "" {
+		for i, e := range m.shown {
+			if e.Item.ID == was {
+				m.cursor = i
+				m.clampCursor()
+				return
+			}
+		}
+	}
+	m.clampCursor()
 }
 
 // currentScope is the scope a non-merged mode lists.
@@ -453,16 +498,20 @@ func (m *Model) currentScope() store.Scope {
 	return m.scope.Scope
 }
 
-// Entries is the loaded listing, in display order.
-func (m *Model) Entries() []store.Entry { return m.entries }
+// Entries is what is on screen, in display order: the loaded listing with the
+// filters applied.
+func (m *Model) Entries() []store.Entry { return m.shown }
+
+// Loaded is everything the current scope holds, before the filters narrow it.
+func (m *Model) Loaded() []store.Entry { return m.entries }
 
 // Cursor is the index of the selected row.
 func (m *Model) Cursor() int { return m.cursor }
 
 // Selected is the entry under the cursor, or nil when the list is empty.
 func (m *Model) Selected() *store.Entry {
-	if m.cursor < 0 || m.cursor >= len(m.entries) {
+	if m.cursor < 0 || m.cursor >= len(m.shown) {
 		return nil
 	}
-	return &m.entries[m.cursor]
+	return &m.shown[m.cursor]
 }
