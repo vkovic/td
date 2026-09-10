@@ -30,8 +30,8 @@ Accepted by every subcommand.
 | `--session-id <id>` | Record the Claude Code session id on the item |
 | `--no-epilogue` | Skip the bump, archive, commit and push tail |
 
-`--source`, `--session-name` and `--session-id` are only stored by commands that
-create or rewrite an item; on a pure read they are accepted and ignored.
+`--source`, `--session-name` and `--session-id` are stored by `td add` only;
+every other command accepts and ignores them.
 
 ## Commands
 
@@ -56,7 +56,12 @@ project and creates that project's directory in the store. With no name, the
 current directory's own name is used.
 
 **`td add <title>...`** creates an item in the applicable list. The words after
-`add` become the title, so quoting is optional. `-b` takes a markdown body
+`add` become the title, so `td` itself needs no quoting — but a caller invoking
+it through a shell should always single-quote the title anyway, because the
+shell expands `$` and backticks and chokes on an apostrophe before `td` sees the
+argument. A title cannot begin with `-`: it is parsed as a flag, and `--` does
+not help, since everything after it including the provenance flags is swallowed
+into the title. `-b` takes a markdown body
 inline; `--body-file -` reads it from standard input, which is how a long or
 multi-line body is passed safely. `-t` is repeatable.
 
@@ -87,18 +92,6 @@ Not available yet: `td ui` (the TUI) is Milestone 3. `td commit` takes no `-m`.
 An id is 8 lowercase base32 characters. **Any unique prefix works** wherever an
 id is expected, so `td done 64n9gq` is fine when only one item starts that way.
 Every command that takes an id takes one or more.
-
-## Resolving a title to an id
-
-`td done`, `td rm`, `td edit` and the rest take ids, never titles. To act on an
-item the user named in prose:
-
-1. Run `td ls --json` (add `--done` or `--all` if the item may not be open or
-   may be in another scope).
-2. Match the user's words against the `title` fields in the returned array.
-3. Call the command with the matched item's `id`.
-
-Never guess an id, and never pass a title where an id is expected.
 
 ## The epilogue
 
