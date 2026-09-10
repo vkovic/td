@@ -123,7 +123,10 @@ the scope name, `global`, or `all`.
 
 **Mutating commands** (`add`, `edit`, `done`, `undo`, `rm`, `restore`) →
 `{"action": …, "items": [item…], "epilogue": {…}}`. `action` is the command's
-name, except that `td rm` reports `"remove"`.
+name, except that `td rm` reports `"remove"` — and that string is load-bearing
+rather than cosmetic: `cmd/td/mutate.go:40` tests `action != "remove"` to decide
+whether item bodies are included, which is why `td rm` is the one mutating
+command whose items carry no `body`.
 
 **Maintenance commands** (`bump`, `archive`, `commit`, `push`) →
 `{"action": …, "epilogue": {…}}`, with no `items`.
@@ -155,8 +158,10 @@ and no epilogue.
 Every field marked *absent* is omitted entirely rather than emitted as null or
 `""` — read defensively.
 
-`body` is present on `td show` and on the mutating commands. **`td ls` never
-returns `body`**; use `td show <id>` when the body is needed.
+`body` is present on `td show` and on `add`, `edit`, `done`, `undo` and
+`restore`. **Neither `td ls` nor `td rm` returns `body`**; use `td show <id>`
+when the body is needed — `show` finds an item in the trash, so it still works
+after an `rm`.
 
 ### The epilogue object
 
