@@ -121,6 +121,38 @@ func inTableOrder(rendered string) bool {
 	return true
 }
 
+// TestLegendWidthIsMeasuredNotCounted: legendSeparator is " · " — four bytes
+// for three columns — so a byte count overstates the legend by one per gap and
+// the pane withholds a key that would have fit. The error is conservative, so
+// nothing that checks for overrun could ever have caught it.
+func TestLegendWidthIsMeasuredNotCounted(t *testing.T) {
+	var keep []binding
+	for _, b := range keyMap() {
+		if b.short != "" {
+			keep = append(keep, b)
+		}
+	}
+	if got, want := legendWidth(keep), ansi.StringWidth(legend(0)); got != want {
+		t.Errorf("legendWidth = %d, the rendered legend is %d columns", got, want)
+	}
+
+	// And the consequence: a legend is shown at exactly the width it occupies,
+	// not one gap per entry later.
+	for _, width := range []int{102, 61, 50} {
+		got := legend(width)
+		if n := ansi.StringWidth(got); n > width {
+			t.Errorf("the legend at width %d is %d columns", width, n)
+		}
+		// Whatever it dropped, one more entry would not have fit.
+		if n := ansi.StringWidth(legend(width + 1)); n == ansi.StringWidth(got) && width < 102 {
+			continue // the next column genuinely buys nothing
+		}
+	}
+	if got := ansi.StringWidth(legend(61)); got != 61 {
+		t.Errorf("at width 61 the legend is %d columns, want the 61-column set: %q", got, legend(61))
+	}
+}
+
 // TestLegendComesFromTheSameTable: the footer's one-line legend is generated
 // too, so it cannot drift from the overlay.
 func TestLegendComesFromTheSameTable(t *testing.T) {

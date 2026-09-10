@@ -412,7 +412,7 @@ func (m *Model) fitFilter(f string, spent int) string {
 	if m.width <= 0 {
 		return f
 	}
-	room := max(m.width-spent-len(" · filtered "), minFilterEcho)
+	room := max(m.width-spent-ansi.StringWidth(" · filtered "), minFilterEcho)
 	if ansi.StringWidth(f) <= room {
 		return f
 	}

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // binding is one key and what it does. The same table dispatches the keystroke
@@ -111,15 +112,20 @@ func legend(width int) string {
 	return strings.Join(parts, legendSeparator)
 }
 
-// legendWidth is how many columns a set of entries takes once rendered. Every
-// entry here is plain ASCII, so its display width is its length.
+// legendWidth is how many columns a set of entries takes once rendered.
+//
+// Measured, not counted. The entries are ASCII, but legendSeparator is " · ":
+// four bytes for three columns, so a byte count overstates the line by one per
+// gap. That is conservative — the legend under-uses the pane rather than
+// overrunning it — which is why it withheld a key that fit and no test that
+// checks for overrun ever noticed.
 func legendWidth(bindings []binding) int {
 	if len(bindings) == 0 {
 		return 0
 	}
-	total := len(legendSeparator) * (len(bindings) - 1)
+	total := ansi.StringWidth(legendSeparator) * (len(bindings) - 1)
 	for _, b := range bindings {
-		total += len(b.keys[0]) + 1 + len(b.short)
+		total += ansi.StringWidth(b.keys[0]) + 1 + ansi.StringWidth(b.short)
 	}
 	return total
 }

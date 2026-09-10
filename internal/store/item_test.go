@@ -257,6 +257,48 @@ done_at:
 	}
 }
 
+// TestSkeletonCarriesEveryKeyTdOwns: a td-created item is written by skeleton,
+// which used to carry its own literal list of the optional keys. A field added
+// to keyOrder but not to that list round-tripped through a hand-written file
+// and vanished from every item td created itself — set on the item, no error
+// from Marshal, absent from the file. This asserts the two agree.
+func TestSkeletonCarriesEveryKeyTdOwns(t *testing.T) {
+	due, _ := ParseDate("2026-09-30")
+	doneAt := time.Date(2026, 9, 11, 9, 0, 0, 0, time.UTC)
+	it := &Item{
+		ID:                "01hx2b9f",
+		Title:             "everything at once",
+		Tags:              []string{"a"},
+		Due:               &due,
+		Created:           time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC),
+		Updated:           time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC),
+		DoneAt:            &doneAt,
+		Source:            "cli",
+		Context:           "/tmp",
+		ClaudeSessionName: "m5",
+		ClaudeSessionID:   "abc",
+	}
+	out, err := it.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	for _, key := range keyOrder {
+		if !strings.Contains(string(out), key+":") {
+			t.Errorf("a td-created item does not carry %q, which keyOrder says td owns:\n%s", key, out)
+		}
+	}
+
+	// And what it wrote parses back to the same item, so the keys are not just
+	// present but readable.
+	back, err := ParseItem(out)
+	if err != nil {
+		t.Fatalf("ParseItem of a skeleton: %v", err)
+	}
+	if back.Source != it.Source || back.Context != it.Context || back.ClaudeSessionID != it.ClaudeSessionID {
+		t.Errorf("a skeleton round trip lost provenance: %+v", back)
+	}
+}
+
 func TestItemUnknownKeysPreserved(t *testing.T) {
 	src := `---
 id: 01hx2b9f

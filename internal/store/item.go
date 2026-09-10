@@ -272,8 +272,10 @@ func (it *Item) frontmatter() (*yaml.Node, error) {
 // done_at present even when empty so the file shows a person what it can hold.
 func (it *Item) skeleton() (*yaml.Node, error) {
 	m := &yaml.Node{Kind: yaml.MappingNode}
+	emitted := map[string]bool{}
 	put := func(key string, val *yaml.Node) {
 		m.Content = append(m.Content, str(key), val)
+		emitted[key] = true
 	}
 
 	put("id", str(it.ID))
@@ -301,10 +303,20 @@ func (it *Item) skeleton() (*yaml.Node, error) {
 		}
 		put("done_at", doneAt)
 	}
-	for _, key := range []string{"source", "context", "claude_session_name", "claude_session_id"} {
-		if val, err := it.value(key); err != nil {
+	// Every remaining key td owns, in §7 order and only when it has something
+	// to say. Driven off keyOrder rather than a list of its own: a literal
+	// here would be a fifth place a new field has to be registered, and the
+	// one whose omission is silent — the field would round-trip through a file
+	// somebody wrote by hand and vanish from every item td created itself.
+	for _, key := range keyOrder {
+		if emitted[key] {
+			continue
+		}
+		val, err := it.value(key)
+		if err != nil {
 			return nil, err
-		} else if val != nil {
+		}
+		if val != nil {
 			put(key, val)
 		}
 	}

@@ -85,7 +85,13 @@ func Run(opts Options) (Result, error) {
 	}
 	now := opts.Now
 	if now == nil {
-		now = time.Now
+		// store.Now, not time.Now: this clock stamps as well as compares, and
+		// an untruncated timestamp written into an item makes the file's mtime
+		// outrun its own updated field — which is what HandEdited reads as an
+		// edit made outside td. bump truncates again before stamping, so this
+		// was safe rather than correct; the two callers already pass
+		// second-truncated clocks and the default should not be the odd one.
+		now = store.Now
 	}
 
 	lk, err := acquireLock(opts.Store.LockPath())
