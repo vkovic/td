@@ -7,12 +7,14 @@
 package tui
 
 import (
+	"os/exec"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/vkovic/td/internal/config"
+	"github.com/vkovic/td/internal/epilogue"
 	"github.com/vkovic/td/internal/store"
 )
 
@@ -57,9 +59,22 @@ type Model struct {
 	// seeing, and the TUI is how you would go open the broken file and fix it.
 	warn error
 
+	// prompt is the inline line editor, when one is open.
+	prompt prompt
+
+	// status is what the last epilogue did, and err the last failure that was
+	// worth showing rather than fatal. Both are footer text.
+	status string
+	err    error
+
 	// now is the clock, so a test can pin what counts as overdue and what a
 	// relative timestamp reads as.
 	now func() time.Time
+
+	// exec is how the terminal is handed to another program. It is a field so
+	// a test can run the editor synchronously rather than going through Bubble
+	// Tea's terminal handover, which needs a real one.
+	exec func(*exec.Cmd, tea.ExecCallback) tea.Cmd
 
 	styles styles
 
@@ -81,6 +96,9 @@ type Options struct {
 
 	// Now overrides the clock. Nil means time.Now.
 	Now func() time.Time
+
+	// Exec overrides how a child program is run. Nil means tea.ExecProcess.
+	Exec func(*exec.Cmd, tea.ExecCallback) tea.Cmd
 }
 
 // New builds a model over an already open store and loads the first listing.
@@ -90,6 +108,7 @@ func New(opts Options) (*Model, error) {
 		cfg:    opts.Config,
 		scope:  opts.Scope,
 		now:    opts.Now,
+		exec:   opts.Exec,
 		styles: newStyles(opts.Renderer),
 		// A store opened on the global scope has no project list to show, so
 		// the TUI starts where the CLI would have listed.
@@ -97,6 +116,9 @@ func New(opts Options) (*Model, error) {
 	}
 	if m.now == nil {
 		m.now = time.Now
+	}
+	if m.exec == nil {
+		m.exec = tea.ExecProcess
 	}
 	if opts.Scope.Scope.IsGlobal() {
 		m.mode = ModeGlobal
@@ -117,7 +139,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 	case tea.KeyMsg:
+		if m.prompt.open() {
+			return m, m.handlePromptKey(msg)
+		}
 		return m, m.handleKey(msg)
+	case editorFinishedMsg:
+		return m, m.afterEditor(msg)
+	case epilogueDoneMsg:
+		m.afterEpilogue(msg)
 	}
 	return m, nil
 }
@@ -132,8 +161,93 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		m.moveCursor(1)
 	case "k", "up":
 		m.moveCursor(-1)
+	case "a":
+		m.prompt = prompt{kind: promptAdd, label: "add"}
+	case "e", "enter":
+		if e := m.Selected(); e != nil {
+			return m.editItem("edit", *e)
+		}
 	}
 	return nil
+}
+
+// handlePromptKey drives the inline line editor. Enter submits, esc abandons,
+// and everything else types.
+func (m *Model) handlePromptKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.Type {
+	case tea.KeyEsc, tea.KeyCtrlC:
+		m.prompt = prompt{}
+	case tea.KeyEnter:
+		p := m.prompt
+		m.prompt = prompt{}
+		return m.submitPrompt(p)
+	case tea.KeyBackspace:
+		m.prompt.backspace()
+	case tea.KeyRunes, tea.KeySpace:
+		m.prompt.typed(msg)
+	}
+	return nil
+}
+
+// submitPrompt acts on a finished prompt.
+func (m *Model) submitPrompt(p prompt) tea.Cmd {
+	if p.kind == promptAdd {
+		return m.addItem(p.value)
+	}
+	return nil
+}
+
+// afterEditor is what happens once the editor has exited: the epilogue runs,
+// which is what records a hand edit, sweeps, commits and pushes. It runs even
+// when the editor wrote nothing, because the epilogue is a no-op in that case
+// and deciding otherwise would mean the TUI reading the file to guess.
+func (m *Model) afterEditor(msg editorFinishedMsg) tea.Cmd {
+	if msg.err != nil {
+		m.err = msg.err
+		return nil
+	}
+	return m.runEpilogue(commitMessage(msg.action, msg.entry.Item))
+}
+
+// epilogueDoneMsg carries a finished epilogue back to the event loop.
+type epilogueDoneMsg struct {
+	res epilogue.Result
+	err error
+}
+
+// runEpilogue performs the shared tail off the event loop.
+//
+// It has to be a command rather than a call: the epilogue takes a blocking
+// flock on the store, held by whatever CLI process is mid-command, and waiting
+// for it on the UI goroutine would freeze the pane.
+func (m *Model) runEpilogue(message string) tea.Cmd {
+	// The command runs on another goroutine, so it closes over copies rather
+	// than reaching back into the model, which the event loop owns.
+	cfg, st, now := m.cfg, m.store, m.now
+	return func() tea.Msg {
+		res, err := epilogue.Run(epilogue.Options{
+			Store:   st,
+			Config:  cfg,
+			Steps:   epilogue.AllSteps,
+			Message: message,
+			Now:     now,
+		})
+		return epilogueDoneMsg{res: res, err: err}
+	}
+}
+
+// afterEpilogue records what the run did and re-reads the list, which is where
+// a bump, a sweep and the change itself all become visible at once.
+func (m *Model) afterEpilogue(msg epilogueDoneMsg) {
+	if msg.err != nil {
+		m.err = msg.err
+		return
+	}
+	m.err = nil
+	m.status = describe(msg.res)
+	if err := m.reload(); err != nil {
+		m.err = err
+	}
 }
 
 // moveCursor steps the selection, clamping at both ends rather than wrapping:

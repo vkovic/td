@@ -23,6 +23,7 @@ type styles struct {
 	rule     lipgloss.Style
 	warning  lipgloss.Style
 	footer   lipgloss.Style
+	prompt   lipgloss.Style
 	emptyMsg lipgloss.Style
 }
 
@@ -44,6 +45,7 @@ func newStyles(r *lipgloss.Renderer) styles {
 		rule:     r.NewStyle().Foreground(dim),
 		warning:  r.NewStyle().Foreground(lipgloss.Color("3")),
 		footer:   r.NewStyle().Foreground(dim),
+		prompt:   r.NewStyle().Foreground(lipgloss.Color("6")).Bold(true),
 		emptyMsg: r.NewStyle().Foreground(dim),
 	}
 }
@@ -69,6 +71,12 @@ func (m *Model) View() string {
 		b.WriteString(m.rows())
 	}
 
+	if m.prompt.open() {
+		fmt.Fprintln(&b, m.styles.prompt.Render(m.prompt.label+"> ")+m.prompt.value+"█")
+	}
+	if m.err != nil {
+		fmt.Fprintln(&b, m.styles.warning.Render("error: "+m.err.Error()))
+	}
 	fmt.Fprintln(&b, m.styles.footer.Render(m.footer()))
 	return b.String()
 }
@@ -154,8 +162,12 @@ func (m *Model) footer() string {
 			open++
 		}
 	}
-	return fmt.Sprintf("%s · %d open, %d total · j/k move · q quit",
+	line := fmt.Sprintf("%s · %d open, %d total · j/k move · a add · e edit · q quit",
 		m.scopeLabel(), open, len(m.entries))
+	if m.status != "" {
+		line += " · " + m.status
+	}
+	return line
 }
 
 // scopeLabel names the list on screen: the project or global name for a single
