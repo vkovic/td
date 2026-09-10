@@ -128,6 +128,7 @@ func (m *Model) addItem(title string) tea.Cmd {
 		Created: created,
 		Updated: created,
 		Source:  SourceTUI,
+		Context: store.WorkingContext(),
 	}
 	ref, err := m.store.Save(m.currentAddScope(), store.Active, it)
 	if err != nil {

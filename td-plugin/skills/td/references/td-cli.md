@@ -171,7 +171,7 @@ and no epilogue.
 | `done_at` | string or null | `null` when open — this is the done flag of record |
 | `done` | bool | Convenience mirror of `done_at != null` |
 | `source` | string | `claude`, `tui`, `cli`; who *created* the item, never who last touched it, since only `td add` writes it; **absent** when unset |
-| `context` | string | cwd at creation; **absent** when unset, which today is always |
+| `context` | string | the working directory the item was created from, recorded by `td add` and by the pane; absent on items created before td recorded it |
 | `claude_session_name` | string | **absent** when unset |
 | `claude_session_id` | string | **absent** when unset |
 | `scope` | string | project name, or `global` |

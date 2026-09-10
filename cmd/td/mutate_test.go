@@ -135,6 +135,28 @@ func TestAddRecordsProvenance(t *testing.T) {
 	}
 }
 
+// TestAddRecordsTheWorkingDirectory: INTENT §7 has context hold the directory
+// an item was raised from, which is the whole reason an item raised mid-session
+// can be traced back to what the session was doing.
+func TestAddRecordsTheWorkingDirectory(t *testing.T) {
+	h := newHarness(t)
+	// After the harness, which runs each test from a directory of its own —
+	// the same thing that makes this field worth recording.
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := h.mutation("add", "Raised from here")
+
+	if got := res.Items[0].Context; got != wd {
+		t.Errorf("context = %q, want the working directory %q", got, wd)
+	}
+	e := only(t, h.list(store.Active), "the live list")
+	if e.Item.Context != wd {
+		t.Errorf("the file records context %q, want %q", e.Item.Context, wd)
+	}
+}
+
 func TestAddIntoAProjectScope(t *testing.T) {
 	h := newHarness(t)
 	h.mustRun("link", "acme")

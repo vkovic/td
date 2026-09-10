@@ -62,6 +62,7 @@ func (a *app) add(title string, f addFlags) error {
 		Tags:    cleanTags(f.tags),
 		Created: created,
 		Updated: created,
+		Context: store.WorkingContext(),
 		Body:    body,
 	}
 	if f.due != "" {

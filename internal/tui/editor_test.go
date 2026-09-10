@@ -254,6 +254,15 @@ func TestAddCreatesOpensAndCommits(t *testing.T) {
 	if it.Source != SourceTUI {
 		t.Errorf("source is %q, want %q", it.Source, SourceTUI)
 	}
+	// The pane stamps context the way td add does, so an item raised in the
+	// pane says where the pane was opened.
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if it.Context != wd {
+		t.Errorf("context is %q, want the working directory %q", it.Context, wd)
+	}
 	if it.ID == "" {
 		t.Error("the new item has no id")
 	}

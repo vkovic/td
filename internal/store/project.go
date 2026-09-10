@@ -202,3 +202,17 @@ func resolveHome(home string) (string, error) {
 	}
 	return h, nil
 }
+
+// WorkingContext is the directory an item is being created from, recorded in
+// its context field so an item raised mid-session says where the session was.
+// Both surfaces call it, so both stamp the field the same way.
+//
+// A working directory that cannot be read is not worth failing an add over:
+// the field is optional, and comes back empty.
+func WorkingContext() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return wd
+}
