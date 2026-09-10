@@ -113,20 +113,29 @@ func (m *Model) rows() string {
 	return b.String()
 }
 
-// minTitle is the narrowest a title is ever squeezed to. A pane too narrow to
-// hold the other cells and this much title overruns by the difference: a row
-// cut to a column of ellipses says nothing at all, and a stub of a title is
-// what makes one row tell itself apart from the next.
+// minTitle is the narrowest a title is ever squeezed to. A row cut below this
+// says nothing that tells it apart from the row above it.
 const minTitle = 8
+
+// cell is one of the pieces that follow the title, with what it costs to lose.
+// A pane too narrow for all of them drops whole cells, highest cost last to
+// survive, rather than letting the row overrun and be clipped by the terminal.
+type cell struct {
+	text string
+	// drop orders what goes first when the row will not fit: higher goes
+	// sooner. The age is vaguest, the due date is the one that is actually
+	// urgent, so they sit at opposite ends.
+	drop int
+}
 
 // row renders one item: the cursor, a done marker, the title, its tags, its due
 // date and how long ago it was updated. Empty fields take no space at all, so a
 // list with no tags carries no gap where the tags would be.
 //
-// The title is the one cell that gives way when the row is wider than the pane.
-// Everything else is short, fixed, and the answer to a question — when is this
-// due, how long has it sat there — so a row wraps into two lines only when the
-// pane is too narrow to hold even a stub of a title.
+// The title is the first cell to give way, and below a stub of a title the
+// trailing cells start going too. Nothing is left to the terminal to clip: a
+// clipped row loses its right-hand end with nothing on screen to say so, which
+// is how a 40-column pane came to show "due 2026-" and no age at all.
 func (m *Model) row(e store.Entry, selected bool) string {
 	marker := "  "
 	if selected {
@@ -145,27 +154,69 @@ func (m *Model) row(e store.Entry, selected bool) string {
 	if m.mode == ModeAll {
 		before = append(before, m.styles.scope.Render(e.Ref.Scope.String()))
 	}
-	var after []string
+
+	var after []cell
 	if len(e.Item.Tags) > 0 {
-		after = append(after, m.styles.tags.Render("#"+strings.Join(e.Item.Tags, " #")))
+		after = append(after, cell{text: m.styles.tags.Render("#" + strings.Join(e.Item.Tags, " #")), drop: 2})
 	}
 	if e.Item.Due != nil {
 		text := "due " + e.Item.Due.String()
+		style := m.styles.due
 		if m.overdue(e.Item) {
-			after = append(after, m.styles.overdue.Render(text))
-		} else {
-			after = append(after, m.styles.due.Render(text))
+			style = m.styles.overdue
 		}
+		after = append(after, cell{text: style.Render(text), drop: 1})
 	}
-	after = append(after, m.styles.updated.Render(relative(e.Item.Updated, m.now())))
+	if age := relative(e.Item.Updated, m.now()); age != "" {
+		after = append(after, cell{text: m.styles.updated.Render(age), drop: 3})
+	}
+	after = m.affordable(before, after)
 
 	style := m.styles.title
 	if e.Item.Done() {
 		style = m.styles.done
 	}
-	title := m.fitTitle(style.Render(e.Item.Title), before, after)
+	texts := append([]string{}, before...)
+	texts = append(texts, m.fitTitle(style.Render(e.Item.Title), before, after))
+	for _, c := range after {
+		texts = append(texts, c.text)
+	}
+	// The last resort, for a pane too narrow even for the marker and a stub:
+	// clip with an ellipsis rather than let the terminal clip silently.
+	return m.fit(strings.Join(texts, " "))
+}
 
-	return strings.Join(append(append(before, title), after...), " ")
+// affordable drops trailing cells, costliest-to-lose last, until the row has
+// room for a stub of a title. The cells that survive keep their own order, so
+// a narrowing pane loses cells from a stable layout rather than rearranging
+// what is left.
+func (m *Model) affordable(before []string, after []cell) []cell {
+	if m.width <= 0 {
+		return after
+	}
+	for len(after) > 0 && m.width-spent(before, after) < minTitle {
+		worst := 0
+		for i, c := range after {
+			if c.drop > after[worst].drop {
+				worst = i
+			}
+		}
+		after = append(after[:worst:worst], after[worst+1:]...)
+	}
+	return after
+}
+
+// spent is what every cell but the title costs, including the single space
+// between each pair of cells and the title's own two.
+func spent(before []string, after []cell) int {
+	total := len(before) + len(after)
+	for _, text := range before {
+		total += ansi.StringWidth(text)
+	}
+	for _, c := range after {
+		total += ansi.StringWidth(c.text)
+	}
+	return total
 }
 
 // fitTitle trims a rendered title to whatever the other cells leave of the
@@ -177,15 +228,11 @@ func (m *Model) row(e store.Entry, selected bool) string {
 // several times its display width; slicing the raw string and styling after
 // would look right in every test that strips the styling and corrupt exactly
 // the rows that carry it.
-func (m *Model) fitTitle(title string, before, after []string) string {
+func (m *Model) fitTitle(title string, before []string, after []cell) string {
 	if m.width <= 0 {
 		return title
 	}
-	spent := len(before) + len(after) // one space between every pair of cells
-	for _, cell := range append(append([]string{}, before...), after...) {
-		spent += ansi.StringWidth(cell)
-	}
-	room := max(m.width-spent, minTitle)
+	room := max(m.width-spent(before, after), minTitle)
 	if ansi.StringWidth(title) <= room {
 		return title
 	}

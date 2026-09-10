@@ -230,24 +230,73 @@ func TestDoneRowsFitTheWidth(t *testing.T) {
 	}
 }
 
-// TestNarrowPaneKeepsAStubOfTitle: below the width the fixed cells already
-// need, the row overruns — but by as little as a title stub costs, not by the
-// whole title. A row cut to a column of ellipses tells one item from another
-// not at all.
-func TestNarrowPaneKeepsAStubOfTitle(t *testing.T) {
+// TestNoRowEverExceedsTheWidth: the invariant, at every width worth having.
+// A row wider than the pane is not a row that overruns — Bubble Tea clips it —
+// so what an overrun actually costs is the right-hand end of the line, with
+// nothing on screen to say anything was dropped. That is what a 40-column pane
+// used to show: "due 2026-" and no age at all.
+func TestNoRowEverExceedsTheWidth(t *testing.T) {
 	s := newStore(t)
 	long := strings.Repeat("wire the epilogue ", 7)
 	save(t, s, item{id: "aaa", title: long, tags: []string{"cli", "epilogue"}, due: "2026-09-30", updated: ago(3)})
+	doneAt := ago(1)
+	save(t, s, item{id: "bbb", title: long, updated: ago(3), doneAt: &doneAt})
+	save(t, s, item{id: "ccc", title: long, updated: ago(3), scope: store.Scope("a-rather-long-project-name")})
 
 	m := newModel(t, s)
-	resize(m, 30)
-
-	line := plain(m.row(m.Entries()[0], false))
-	if got := ansi.StringWidth(line); got > 60 {
-		t.Errorf("a 30-column pane rendered a %d-column row, want the title cut back to a stub:\n%s", got, line)
+	for _, width := range []int{200, 80, 60, 50, 40, 30, 20, 10} {
+		resize(m, width)
+		for _, merged := range []bool{false, true} {
+			if merged {
+				m.mode = ModeAll
+				if err := m.reload(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for i, e := range m.Entries() {
+				// Measured on the styled row, which is what the terminal is
+				// handed: a done title's strikethrough is per rune, so its
+				// bytes run to several times its width.
+				row := m.row(e, i == 0)
+				if got := ansi.StringWidth(row); got > width {
+					t.Errorf("at width %d (merged %v) a row is %d columns: %q", width, merged, got, ansi.Strip(row))
+				}
+			}
+		}
 	}
-	if !strings.HasPrefix(strings.TrimSpace(line), "[ ] wire") {
-		t.Errorf("the row lost its title entirely:\n%s", line)
+}
+
+// TestNarrowPaneDropsCellsBeforeTheTitleDisappears: below the width everything
+// fits in, whole cells go rather than the title being ground down to nothing —
+// the age first, because "3h ago" is the vaguest thing on the row, and the due
+// date last, because it is the one that is actually urgent.
+func TestNarrowPaneDropsCellsBeforeTheTitleDisappears(t *testing.T) {
+	s := newStore(t)
+	save(t, s, item{id: "aaa", title: strings.Repeat("wire the epilogue ", 7),
+		tags: []string{"cli", "epilogue"}, due: "2026-09-30", updated: ago(3)})
+
+	m := newModel(t, s)
+	row := func(width int) string {
+		resize(m, width)
+		return plain(m.row(m.Entries()[0], false))
+	}
+
+	if got := row(60); !strings.Contains(got, "3h ago") || !strings.Contains(got, "#cli") || !strings.Contains(got, "due 2026-09-30") {
+		t.Errorf("a 60-column pane dropped a cell it had room for: %q", got)
+	}
+	if got := row(50); strings.Contains(got, "3h ago") || !strings.Contains(got, "due 2026-09-30") {
+		t.Errorf("at 50 the age should go first and the due date should stay: %q", got)
+	}
+	if got := row(40); strings.Contains(got, "#cli") || !strings.Contains(got, "due 2026-09-30") {
+		t.Errorf("at 40 the tags should go and the due date should stay: %q", got)
+	}
+	// Whatever survives keeps its own place, so a narrowing pane loses cells
+	// from a stable layout rather than rearranging what is left.
+	if got := row(30); !strings.HasSuffix(strings.TrimSpace(got), "due 2026-09-30") {
+		t.Errorf("at 30 the due date should still trail the title: %q", got)
+	}
+	if got := row(20); !strings.Contains(got, "wire") {
+		t.Errorf("at 20 the row should still show what the item is: %q", got)
 	}
 }
 
