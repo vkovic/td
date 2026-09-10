@@ -128,6 +128,12 @@ func (m *Model) pickScope() tea.Cmd {
 // this overlay has a cursor, so the window follows it rather than holding
 // still. A store with forty projects in a pane fourteen lines tall must not be
 // a picker whose cursor walks off the bottom.
+//
+// Only an unknown height renders the whole thing unwindowed. Bubble Tea sends
+// the size after the model is built, and a pane one row tall is a real pane —
+// treating the two the same rendered thirty-five lines into three, where the
+// terminal keeps the tail, the heading and the cursor row both go, and j/k
+// look dead because nothing on screen moves.
 func (m *Model) pickerView() string {
 	head := []string{m.styles.title.Render(m.fit("td — lists")), ""}
 	pinned := m.styles.footer.Render(m.fit(pickerHint))
@@ -137,14 +143,23 @@ func (m *Model) pickerView() string {
 		rows[i] = m.pickerRow(v, i == m.picker.cursor)
 	}
 
-	room := 0
-	if m.height > 0 {
-		room = m.height - len(head) - 1
-	}
-	if room <= 0 || len(rows) <= room {
+	if m.height <= 0 || len(head)+len(rows)+1 <= m.height {
 		m.picker.top = 0
-		return strings.Join(append(append(head, rows...), pinned), "\n")
+		return strings.Join(assemble(head, rows, pinned), "\n")
 	}
+
+	// What each part is worth when they cannot all fit. The hint is pinned,
+	// because a picker you cannot work is worse than one you cannot read the
+	// title of. The rows keep a line as long as there is one, because the
+	// cursor is the only thing on this screen that moves. So the heading is
+	// what gives way, and it gives way from its blank line first.
+	head = head[:min(len(head), max(m.height-2, 0))]
+	room := max(m.height-len(head)-1, 0)
+	if room == 0 {
+		m.picker.top = 0
+		return pinned
+	}
+
 	m.picker.top = min(max(m.picker.top, 0), len(rows)-room)
 	if m.picker.cursor < m.picker.top {
 		m.picker.top = m.picker.cursor
@@ -152,7 +167,18 @@ func (m *Model) pickerView() string {
 	if m.picker.cursor >= m.picker.top+room {
 		m.picker.top = m.picker.cursor - room + 1
 	}
-	return strings.Join(append(append(head, rows[m.picker.top:m.picker.top+room]...), pinned), "\n")
+	return strings.Join(assemble(head, rows[m.picker.top:m.picker.top+room], pinned), "\n")
+}
+
+// assemble joins the overlay's three parts into one set of lines, copied into
+// a slice of its own rather than appended onto the heading — the heading is
+// re-sliced above, and appending past its end would write over the line it had
+// just given up.
+func assemble(head, rows []string, pinned string) []string {
+	lines := make([]string, 0, len(head)+len(rows)+1)
+	lines = append(lines, head...)
+	lines = append(lines, rows...)
+	return append(lines, pinned)
 }
 
 // pickerRow renders one list's line, marked the way a selected item is marked

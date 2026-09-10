@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -96,6 +97,25 @@ func TestPickerOpensOnTheListOnScreen(t *testing.T) {
 		if got := m.scopeLabel(); got != showing {
 			t.Errorf("enter on the list already showing moved the pane to %q", got)
 		}
+	}
+}
+
+// TestPickerOpensOnGlobalWithNoMarker: a pane opened where no .td marker
+// resolves shows the global list, so that is the row the cursor opens on. It is
+// the case the deleted three-way cycle test covered, where there was no project
+// stop to visit at all.
+func TestPickerOpensOnGlobalWithNoMarker(t *testing.T) {
+	m := newModel(t, spread(t))
+	if got := m.scopeLabel(); got != "global" {
+		t.Fatalf("with no marker the pane opened on %q, want the global list", got)
+	}
+
+	press(m, "g")
+	if got := m.picker.cursor; got != 0 {
+		t.Errorf("the picker opened its cursor on row %d, want the first", got)
+	}
+	if got := m.picker.rows[m.picker.cursor].label(); got != "global" {
+		t.Errorf("the picker opened its cursor on %q, want global", got)
 	}
 }
 
@@ -293,6 +313,67 @@ func TestPickerFitsANarrowPane(t *testing.T) {
 	for _, line := range lines(m.View()) {
 		if got := ansi.StringWidth(line); got > 60 {
 			t.Errorf("a picker line is %d columns wide, want 60 or fewer: %q", got, line)
+		}
+	}
+}
+
+// TestPickerNeverExceedsThePaneHeight: the picker is windowed at every height
+// a pane can actually be, not only at the comfortable ones. Rendering more
+// lines than the pane has does not scroll — the terminal keeps the tail, which
+// takes the heading and the cursor row with it and leaves j/k moving something
+// nobody can see.
+//
+// The cursor is driven to the last row, because that is the case a window that
+// forgot to follow it still passes: the view fits the pane and shows the wrong
+// rows.
+func TestPickerNeverExceedsThePaneHeight(t *testing.T) {
+	s := newStore(t)
+	for i := range 30 {
+		name := fmt.Sprintf("p%02d", i)
+		save(t, s, item{id: "id" + name, title: name + " one", updated: ago(i + 1), scope: store.Scope(name)})
+	}
+
+	m := newModel(t, s)
+	press(m, "g")
+	for range len(m.picker.rows) {
+		press(m, "j")
+	}
+	if got, want := m.picker.cursor, len(m.picker.rows)-1; got != want {
+		t.Fatalf("the picker cursor is on row %d, want the last row %d", got, want)
+	}
+
+	for _, height := range []int{24, 12, 8, 6, 5, 4, 3, 2, 1} {
+		m.Update(tea.WindowSizeMsg{Width: 60, Height: height})
+		view := plain(m.pickerView())
+		got := strings.Split(strings.TrimRight(view, "\n"), "\n")
+
+		if len(got) > height {
+			t.Errorf("at height %d the picker is %d lines:\n%s", height, len(got), view)
+		}
+		// The hint is the last line at every height, because a picker you
+		// cannot work is worse than one whose title you cannot read.
+		if last := got[len(got)-1]; last != pickerHint {
+			t.Errorf("at height %d the last line is %q, want the hint", height, last)
+		}
+		// And the cursor row is on screen wherever there is room for a row.
+		want := "❯ " + m.picker.rows[m.picker.cursor].label()
+		if height > 1 && !strings.Contains(view, want) {
+			t.Errorf("at height %d the cursor row %q is off screen:\n%s", height, want, view)
+		}
+	}
+}
+
+// TestPickerRendersWholeBeforeTheFirstSize: Bubble Tea sends the size after the
+// model is built, and an unknown height is not a short pane. Windowing against
+// it would show one row of the overlay to a terminal that has room for forty.
+func TestPickerRendersWholeBeforeTheFirstSize(t *testing.T) {
+	m := newModel(t, spread(t), inProject("td"))
+	press(m, "g")
+
+	view := plain(m.pickerView())
+	for _, want := range []string{"td — lists", "global", "all scopes", "acme", "zeta", pickerHint} {
+		if !strings.Contains(view, want) {
+			t.Errorf("the unsized picker is missing %q:\n%s", want, view)
 		}
 	}
 }
