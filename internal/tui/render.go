@@ -19,6 +19,7 @@ type styles struct {
 	tags     lipgloss.Style
 	due      lipgloss.Style
 	overdue  lipgloss.Style
+	scope    lipgloss.Style
 	updated  lipgloss.Style
 	cursor   lipgloss.Style
 	rule     lipgloss.Style
@@ -41,6 +42,7 @@ func newStyles(r *lipgloss.Renderer) styles {
 		tags:     r.NewStyle().Foreground(lipgloss.Color("5")),
 		due:      r.NewStyle().Foreground(lipgloss.Color("4")),
 		overdue:  r.NewStyle().Foreground(lipgloss.Color("1")).Bold(true),
+		scope:    r.NewStyle().Foreground(lipgloss.Color("2")),
 		updated:  r.NewStyle().Foreground(dim),
 		cursor:   r.NewStyle().Foreground(lipgloss.Color("6")).Bold(true),
 		rule:     r.NewStyle().Foreground(dim),
@@ -127,6 +129,12 @@ func (m *Model) row(e store.Entry, selected bool) string {
 	}
 
 	before := []string{marker, box}
+	// Only the merged view needs the label: in a single-scope view every row
+	// would carry the same one, which is what the status line already says.
+	// It sits before the title, where td ls --all puts its SCOPE column.
+	if m.mode == ModeAll {
+		before = append(before, m.styles.scope.Render(e.Ref.Scope.String()))
+	}
 	var after []string
 	if len(e.Item.Tags) > 0 {
 		after = append(after, m.styles.tags.Render("#"+strings.Join(e.Item.Tags, " #")))

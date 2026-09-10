@@ -264,6 +264,40 @@ func TestRowsAreUnfittedBeforeTheFirstSize(t *testing.T) {
 	}
 }
 
+// TestMergedViewLabelsEachScope: the merged view mixes lists, so a row has to
+// say which list it came from — the same thing td ls --all does with its SCOPE
+// column. A single-scope view says it once, in the status line, and does not
+// repeat it on every row.
+func TestMergedViewLabelsEachScope(t *testing.T) {
+	s := newStore(t)
+	// Titles that carry neither scope name, so an assertion about a label is
+	// about the label and not about the title next to it.
+	save(t, s, item{id: "aaa", title: "first item", updated: ago(1)})
+	save(t, s, item{id: "bbb", title: "second item", updated: ago(2), scope: store.Scope("acme")})
+
+	m := newModel(t, s)
+	if m.scopeLabel() != "global" {
+		t.Fatalf("the pane opened on %q, want the global list", m.scopeLabel())
+	}
+	if got := plain(m.rows()); strings.Contains(got, "global") || strings.Contains(got, "acme") {
+		t.Errorf("a single-scope view labelled its rows, which says the same thing on every one:\n%s", got)
+	}
+
+	press(m, "g") // onto the merged view
+	if m.scopeLabel() != "all scopes" {
+		t.Fatalf("g landed on %q, want the merged view", m.scopeLabel())
+	}
+	// The label belongs to its own row, not to whichever row sorted first.
+	for _, line := range strings.Split(strings.TrimRight(plain(m.rows()), "\n"), "\n") {
+		switch {
+		case strings.Contains(line, "first item") && !strings.Contains(line, "global"):
+			t.Errorf("the global row carries no scope: %s", line)
+		case strings.Contains(line, "second item") && !strings.Contains(line, "acme"):
+			t.Errorf("the acme row carries no scope: %s", line)
+		}
+	}
+}
+
 // TestListOrder: the TUI shows what td ls would show, in the same order, open
 // items first and done items after them.
 func TestListOrder(t *testing.T) {

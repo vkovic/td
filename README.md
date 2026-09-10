@@ -80,6 +80,10 @@ and `auto_push` exactly as `td done`, `td rm`, `td edit` and `td add` do. `r` is
 the exception: asking for the tail outright overrides both settings, the way
 `td commit` commits with `auto_commit` off.
 
+The merged view labels every row with the list it came from, the way
+`td ls --all` adds a `SCOPE` column, since that is the one view where two rows
+next to each other can belong to different lists.
+
 Two notes on the filters. They are view state, so a refresh arriving while one
 is open leaves it, and the cursor, where they were. And `t` does not hide done
 items the way `td ls -t` does: the CLI composes its filter with an explicit
