@@ -190,6 +190,12 @@ func (m *Model) row(e store.Entry, selected bool) string {
 // room for a stub of a title. The cells that survive keep their own order, so
 // a narrowing pane loses cells from a stable layout rather than rearranging
 // what is left.
+//
+// One consequence looks like a bug in a screenshot and is not: a narrower pane
+// can show more title than a wider one. At 50 columns the tags still fit and
+// the title reads "wire the epi…"; at 40 the tags are dropped and their 13
+// columns go to the title, which reads "wire the epilogue…". Losing a whole
+// cell frees more than the column it cost.
 func (m *Model) affordable(before []string, after []cell) []cell {
 	if m.width <= 0 {
 		return after
