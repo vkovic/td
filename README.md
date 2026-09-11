@@ -84,6 +84,9 @@ is the one thing on screen saying there is a done section under it.
 When rows are off screen the status line says where they went — `3 above,
 8 between, 5 below`. "Between" is the fold at the rule: rows hidden where the
 open section stops and the done one starts, which is neither end of the list.
+Those counts are what makes the window honest, so a line too wide for the pane
+drops the item total first, then elides the list's name, and only then gives up
+its own tail.
 
 ### Keys
 

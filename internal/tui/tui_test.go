@@ -944,6 +944,118 @@ func TestTheViewFitsEveryHeightDownToOne(t *testing.T) {
 	}
 }
 
+// statusLine is the first of the footer's two lines, rendered for a model
+// whose list is showing the given rows off screen.
+func statusLine(m *Model, off hidden) string {
+	return plain(strings.Split(m.footer(off), "\n")[0])
+}
+
+// showing points the model at a named list without going through the picker,
+// so one fixture can be rendered under a scope label of any length. An empty
+// name is the merged view, whose label is the one nobody can rename.
+func showing(m *Model, name string) {
+	if name == "" {
+		m.view = scopeView{merged: true}
+		return
+	}
+	m.view = scopeView{scope: store.Scope(name)}
+}
+
+// TestTheStatusLineShedsTheTotalBeforeTheCounts: what gives way when the line
+// is wider than the pane. The off-screen counts are what make the window
+// honest, and they sit last, so truncating the line from the right took them
+// first — at sixty columns, the README's own recommended width, a list called
+// "internal-a" ended in "· 4 between, 10 b…".
+//
+// The total goes instead. It is the open count plus a done section that is on
+// screen anyway, which makes it the least informative thing on the line, and
+// dropping it buys ten columns.
+func TestTheStatusLineShedsTheTotalBeforeTheCounts(t *testing.T) {
+	s := newStore(t)
+	stack(t, s, 20, 10)
+	m := newModel(t, s)
+	// Three clauses of counts, which is what a windowed list of both sections
+	// reports and the widest the line has to carry.
+	off := hidden{above: 7, mid: 4, below: 10}
+	const counts = "7 above, 4 between, 10 below"
+
+	t.Run("at sixty columns", func(t *testing.T) {
+		m.width = 60
+		for _, c := range []struct {
+			name  string
+			label string
+			total bool
+		}{
+			{name: "td", label: "td", total: true},
+			{name: "acme-web", label: "acme-web", total: true},
+			{name: "nine-char", label: "nine-char", total: true},
+			{name: "", label: "all scopes"},
+			{name: "internal-a", label: "internal-a"},
+			{name: "platform-api", label: "platform-api"},
+		} {
+			showing(m, c.name)
+			line := statusLine(m, off)
+			if got := ansi.StringWidth(line); got > m.width {
+				t.Errorf("%s: the status line is %d columns wide: %q", c.label, got, line)
+			}
+			if !strings.Contains(line, counts) {
+				t.Errorf("%s: the counts did not survive: %q", c.label, line)
+			}
+			if !strings.HasPrefix(line, c.label+" · ") {
+				t.Errorf("%s: the label did not survive whole: %q", c.label, line)
+			}
+			if strings.Contains(line, "total") != c.total {
+				t.Errorf("%s: total present is %t, want %t: %q", c.label, !c.total, c.total, line)
+			}
+		}
+	})
+
+	// A name too long for the line even without the total is elided to what is
+	// actually free, not to the floor: trimming to the floor whenever the name
+	// is a column too long would leave the rest of the line blank to buy
+	// nothing.
+	t.Run("a label too long for the line", func(t *testing.T) {
+		m.width = 60
+		showing(m, "a-longer-project-name") // 21 columns
+		line := statusLine(m, off)
+		if !strings.HasPrefix(line, "a-longer-project-n… · ") {
+			t.Errorf("the label was not elided to the room available: %q", line)
+		}
+		if !strings.Contains(line, counts) || strings.Contains(line, "total") {
+			t.Errorf("the label gave way after the total, not before it: %q", line)
+		}
+		if got := ansi.StringWidth(line); got != 60 {
+			t.Errorf("the status line is %d columns wide, want the width used: %q", got, line)
+		}
+	})
+
+	// And the floor, below which the whole line truncates as it always did. A
+	// label cut past this says nothing that tells one list from another.
+	t.Run("a pane too narrow for the floor", func(t *testing.T) {
+		m.width = 40
+		showing(m, "a-longer-project-name")
+		line := statusLine(m, off)
+		label, _, _ := strings.Cut(line, " · ")
+		if ansi.StringWidth(label) != minScopeLabel {
+			t.Errorf("the label is %d columns, want the floor of %d: %q", ansi.StringWidth(label), minScopeLabel, line)
+		}
+		if got := ansi.StringWidth(line); got > m.width {
+			t.Errorf("the status line is %d columns wide: %q", got, line)
+		}
+	})
+
+	// Nothing is shed before the terminal has said how wide it is. A width of
+	// zero is an unknown pane, not a pane with no room in it.
+	t.Run("before the first size", func(t *testing.T) {
+		m.width = 0
+		showing(m, "platform-api")
+		line := statusLine(m, off)
+		if want := "platform-api · 20 open, 30 total · " + counts; line != want {
+			t.Errorf("the status line is %q, want %q", line, want)
+		}
+	})
+}
+
 // TestTheHelpOverlayFitsThePane: the overlay is the one screen that must never
 // be the thing you cannot read — it holds the keys, including the key that
 // closes it. In a 12-row pane it used to render from "/ filter by title" down,
