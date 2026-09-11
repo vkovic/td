@@ -738,6 +738,94 @@ func TestTheFooterSaysWhichSideOfTheRuleRowsAreOn(t *testing.T) {
 	})
 }
 
+// TestTheSplitLadder: how a list area too small for both sections is divided,
+// at every height where the division is forced and with the cursor in each
+// section. The listing behind it has more of both than any of these areas can
+// hold, so every cell is the split's own decision rather than a short section
+// running out of rows.
+//
+// The cell that was wrong: at two lines with the cursor in done, the rule was
+// reserved against the open row rather than against open's other rows, and the
+// list read "── done ──" and the cursor's done row — a screen with no open
+// item on it at all, in a pane with room for one.
+func TestTheSplitLadder(t *testing.T) {
+	const open, done = 20, 5
+	for _, c := range []struct {
+		area         int
+		cursorInDone bool
+		openHeight   int
+		doneHeight   int
+		ruled        bool
+	}{
+		{area: 1, openHeight: 1},
+		{area: 1, cursorInDone: true, doneHeight: 1},
+		{area: 2, openHeight: 1, ruled: true},
+		{area: 2, cursorInDone: true, openHeight: 1, doneHeight: 1},
+		{area: 3, openHeight: 2, ruled: true},
+		{area: 3, cursorInDone: true, openHeight: 1, doneHeight: 1, ruled: true},
+		{area: 4, openHeight: 3, ruled: true},
+		{area: 4, cursorInDone: true, openHeight: 2, doneHeight: 1, ruled: true},
+		{area: 5, openHeight: 4, ruled: true},
+		{area: 5, cursorInDone: true, openHeight: 3, doneHeight: 1, ruled: true},
+	} {
+		where := "open"
+		if c.cursorInDone {
+			where = "done"
+		}
+		openHeight, doneHeight, ruled := split(c.area, open, done, c.cursorInDone)
+		if openHeight != c.openHeight || doneHeight != c.doneHeight || ruled != c.ruled {
+			t.Errorf("an area of %d with the cursor in %s splits into %d open, %d done, rule %t; want %d open, %d done, rule %t",
+				c.area, where, openHeight, doneHeight, ruled, c.openHeight, c.doneHeight, c.ruled)
+			continue
+		}
+		// Every cell fills the area exactly: a line neither section is given
+		// is a line the pane draws nothing on.
+		rule := 0
+		if ruled {
+			rule = 1
+		}
+		if got := openHeight + rule + doneHeight; got != c.area {
+			t.Errorf("an area of %d with the cursor in %s is divided into %d lines", c.area, where, got)
+		}
+		// And the region holding the cursor has a row to draw it on.
+		if c.cursorInDone && doneHeight < 1 {
+			t.Errorf("an area of %d leaves the done section no room for the cursor's row", c.area)
+		}
+		if !c.cursorInDone && openHeight < 1 {
+			t.Errorf("an area of %d leaves the open section no room for the cursor's row", c.area)
+		}
+	}
+}
+
+// TestAFourLinePaneShowsARowOfEachSection: the smallest pane that can show
+// both sections, which is the ladder's broken cell seen from the outside. The
+// rule took the line the open row needed, so a pane beside a full-height
+// Claude Code session showed the done marker and one done item and nothing of
+// what was still to do.
+func TestAFourLinePaneShowsARowOfEachSection(t *testing.T) {
+	s := newStore(t)
+	stack(t, s, 20, 5)
+
+	m := newModel(t, s)
+	// Four rows: two of footer, two of list.
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 4})
+	m.cursor = 20 // the first done item
+
+	got := drawn(m.View())
+	if len(got) != 4 {
+		t.Fatalf("the view is %d lines in a 4-row pane:\n%s", len(got), strings.Join(got, "\n"))
+	}
+	if !strings.Contains(got[0], "open 00") {
+		t.Errorf("the first line is %q, want the open row", got[0])
+	}
+	if !strings.Contains(got[1], "done 00") {
+		t.Errorf("the second line is %q, want the row the cursor is on", got[1])
+	}
+	if strings.Contains(plain(m.View()), doneRule) {
+		t.Errorf("the rule took a line one of the rows needed:\n%s", strings.Join(got, "\n"))
+	}
+}
+
 // TestEachSectionScrollsOnItsOwn: two windows, two scroll offsets. Sharing one
 // between them looks right in a screenshot and drifts in use — the done window
 // scrolling to follow the cursor drags the open rows along under it, so rows

@@ -199,16 +199,25 @@ func (m *Model) sections() (open, done []string) {
 }
 
 // split divides the list area between the two regions when the whole list will
-// not fit in it. Open goes first: it takes the height it needs, up to the whole
-// area less the line the rule holds, and done gets whatever is left, down to
-// the rule on its own. A long open list still ends in the rule, which is the
-// only thing on screen saying a done section exists at all.
+// not fit in it. The area is spent in the order the reader cannot do without,
+// and each claim is met only if the one before it was:
 //
-// The cursor overrides that. Whichever region holds it shows its row, so a
-// cursor walked down into a done section squeezed to the rule grows it back a
-// line at open's expense. In an area of one line there is no room for both,
-// and it is the rule that gives way: a pane showing one row of list must show
-// the row the cursor is on.
+//  1. The row the cursor is on, in whichever region holds it. A pane showing
+//     one row of list must show the row j and k are moving.
+//  2. The first open row, if there are open items. Open is what is still to do,
+//     and a pane with room for a row of it must spend a row on it.
+//  3. The rule, if both sections have rows. It is reserved against open's other
+//     rows, never against either row above: in the four-line pane that reserved
+//     it against the cursor's row, the list read "── done ──" and one done row,
+//     with no open item on screen at all.
+//  4. The rest of open, up to every row it has.
+//  5. The rest of done.
+//
+// Open is therefore served before done past their first rows, so a long open
+// list still ends in the rule, which is then the only thing on screen saying a
+// done section exists at all. And a cursor walked down into a done section
+// squeezed to its rule grows it back a line at open's expense, and gives the
+// line up again on the way out.
 func split(capacity, open, done int, cursorInDone bool) (openHeight, doneHeight int, ruled bool) {
 	ruled = open > 0 && done > 0
 	rule := 0
@@ -221,25 +230,22 @@ func split(capacity, open, done int, cursorInDone bool) (openHeight, doneHeight 
 		return open, done, ruled
 	}
 
-	// What each region must show to keep the cursor on screen. Only one of
-	// them holds it, and the empty-list message counts as an open row.
-	minOpen, minDone := 0, 0
-	if cursorInDone {
-		minDone = 1
-	} else if open > 0 {
-		minOpen = 1
+	left := capacity
+	if cursorInDone && done > 0 {
+		doneHeight, left = 1, left-1
 	}
-
-	openHeight = min(max(min(open, capacity-rule-minDone), minOpen), capacity)
-	switch rest := capacity - openHeight; {
-	case !ruled:
-		doneHeight = rest
-	case rest <= minDone:
-		// One line, and the cursor is on a row of it: the rule is what goes.
-		ruled, doneHeight = false, rest
-	default:
-		doneHeight = rest - 1
+	if open > 0 && openHeight == 0 && left > 0 {
+		openHeight, left = 1, left-1
 	}
+	if ruled && left > 0 {
+		left--
+	} else {
+		ruled = false
+	}
+	if grow := min(open-openHeight, left); grow > 0 {
+		openHeight, left = openHeight+grow, left-grow
+	}
+	doneHeight += min(done-doneHeight, left)
 	return openHeight, doneHeight, ruled
 }
 
