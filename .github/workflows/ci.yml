@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A new push to the same branch supersedes the run in flight.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Both platforms td claims to support. The store takes a flock and the
+    # tests shell out to git, so "it passes on my Mac" is not evidence it
+    # passes on Linux.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          # The one place the Go version is written is go.mod.
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        run: make build
+
+      - name: Formatting
+        run: make fmt-check
+
+      - name: Tidy
+        run: make tidy-check
+
+      - name: Test
+        run: make test
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      # make lint pins the linter's version itself, so this job and a developer
+      # running make lint cannot disagree about which one they ran. The build
+      # cache setup-go keeps means it is compiled once, not once per run.
+      - name: Lint
+        run: make lint
+
+  race:
+    # The TUI runs a file watcher on its own goroutine and dispatches the
+    # epilogue off the event loop, so there is something here to find.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test under the race detector
+        run: make race
