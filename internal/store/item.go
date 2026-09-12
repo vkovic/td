@@ -428,8 +428,23 @@ func (it *Item) inPlace() (*yaml.Node, error) {
 			}
 			// The key node keeps any comment above it; the value node's own
 			// trailing comment has to be carried onto its replacement.
+			//
+			// So does its style. The encoders build a fresh node with a style
+			// of their own — seq writes flow style, str writes the default —
+			// and a file is not keeping its shape if a hand-written block list
+			// comes back as [a, b], or a quoted title comes back bare. Only
+			// when the kind still matches: a key that has changed shape, an
+			// empty scalar that has just gained a list, cannot wear the style
+			// of what it replaced.
+			//
+			// A comment written inside a block sequence is still lost. It is
+			// attached to the child node, and the children are rebuilt from
+			// the field rather than carried over.
 			old := m.Content[i+1]
 			val.LineComment, val.FootComment = old.LineComment, old.FootComment
+			if old.Kind == val.Kind {
+				val.Style = old.Style
+			}
 			m.Content[i+1] = val
 			continue
 		}

@@ -420,3 +420,139 @@ func TestItemTimestampsWrittenInUTC(t *testing.T) {
 		t.Errorf("timestamps not normalized to UTC:\n%s", out)
 	}
 }
+
+// TestHandWrittenFileKeepsItsOwnStyle: the shape a person chose is part of the
+// file, and Marshal's contract is that a file somebody wrote by hand keeps it.
+// The encoders build fresh nodes with styles of their own — a sequence comes
+// back in flow style, a quoted scalar comes back bare — so a rewrite used to
+// reflow YAML nobody asked it to touch. The next td done on a hand-written item
+// turned its block list into [a, b].
+//
+// The round-trip corpus cannot catch this. Every file in it was written by td,
+// in the canonical shape, so it only ever proved idempotence over td's own
+// output.
+func TestHandWrittenFileKeepsItsOwnStyle(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		src  string
+	}{
+		{"a block sequence stays a block sequence", `---
+id: 01hx2b9f
+title: ship it
+tags:
+  - cli
+  - urgent
+created: 2026-09-01T08:00:00Z
+updated: 2026-09-01T08:00:00Z
+done_at:
+---
+`},
+		{"a quoted scalar keeps its quotes", `---
+id: 01hx2b9f
+title: 'ship it'
+tags: [cli]
+created: 2026-09-01T08:00:00Z
+updated: 2026-09-01T08:00:00Z
+done_at:
+---
+`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			it, err := ParseItem([]byte(tc.src))
+			if err != nil {
+				t.Fatalf("ParseItem: %v", err)
+			}
+			out, err := it.Marshal()
+			if err != nil {
+				t.Fatalf("Marshal: %v", err)
+			}
+			if string(out) != tc.src {
+				t.Errorf("an unchanged round trip rewrote the file\n--- in ---\n%s\n--- out ---\n%s", tc.src, out)
+			}
+		})
+	}
+}
+
+// TestAnEditKeepsTheStyleOfTheKeyItChanges: the case that actually happens. A
+// hand-written item gets a tag added, and the list it already had stays a block
+// list rather than being reflowed by the write that added to it.
+func TestAnEditKeepsTheStyleOfTheKeyItChanges(t *testing.T) {
+	src := `---
+id: 01hx2b9f
+title: ship it
+tags:
+  - cli
+created: 2026-09-01T08:00:00Z
+updated: 2026-09-01T08:00:00Z
+done_at:
+---
+`
+	it, err := ParseItem([]byte(src))
+	if err != nil {
+		t.Fatalf("ParseItem: %v", err)
+	}
+	it.Tags = append(it.Tags, "urgent")
+	out, err := it.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	want := `---
+id: 01hx2b9f
+title: ship it
+tags:
+  - cli
+  - urgent
+created: 2026-09-01T08:00:00Z
+updated: 2026-09-01T08:00:00Z
+done_at:
+---
+`
+	if string(out) != want {
+		t.Errorf("adding a tag reflowed the list\n--- got ---\n%s\n--- want ---\n%s", out, want)
+	}
+}
+
+// TestAKeyChangingShapeDoesNotWearTheOldStyle: done_at sits in the file as an
+// empty scalar and becomes a timestamp; tags can go the other way. A style
+// carried across a change of kind is a style that does not apply.
+func TestAKeyChangingShapeDoesNotWearTheOldStyle(t *testing.T) {
+	src := `---
+id: 01hx2b9f
+title: ship it
+tags:
+created: 2026-09-01T08:00:00Z
+updated: 2026-09-01T08:00:00Z
+done_at:
+---
+`
+	it, err := ParseItem([]byte(src))
+	if err != nil {
+		t.Fatalf("ParseItem: %v", err)
+	}
+	it.Tags = []string{"cli"}
+	doneAt := time.Date(2026, 9, 11, 9, 0, 0, 0, time.UTC)
+	it.DoneAt = &doneAt
+
+	out, err := it.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	back, err := ParseItem(out)
+	if err != nil {
+		t.Fatalf("what a shape change wrote does not parse: %v\n%s", err, out)
+	}
+	if len(back.Tags) != 1 || back.Tags[0] != "cli" {
+		t.Errorf("Tags = %v, want the one that was set:\n%s", back.Tags, out)
+	}
+	if back.DoneAt == nil || !back.DoneAt.Equal(doneAt) {
+		t.Errorf("DoneAt = %v, want %v:\n%s", back.DoneAt, doneAt, out)
+	}
+
+	// An empty tags: is a scalar, and what replaces it is a sequence. The file
+	// expressed no shape for a list it did not have, so the list td writes is
+	// the one td writes everywhere else — not the empty scalar's own style,
+	// which belongs to a kind of node this is not.
+	if !strings.Contains(string(out), "tags: [cli]") {
+		t.Errorf("a key that gained a list did not get td's own list style:\n%s", out)
+	}
+}
