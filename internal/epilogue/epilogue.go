@@ -98,7 +98,10 @@ func Run(opts Options) (Result, error) {
 	if err != nil {
 		return res, err
 	}
-	defer lk.release()
+	// A failed release is not worth failing the run over, and not worth
+	// warning about either: the lock lives on the open descriptor, so the
+	// process exiting drops it whatever this returns.
+	defer func() { _ = lk.release() }()
 
 	repo := opts.Store.Repo()
 

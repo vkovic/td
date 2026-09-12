@@ -54,7 +54,7 @@ func (p *Printer) Printf(format string, args ...any) {
 	if p.JSON {
 		return
 	}
-	fmt.Fprintf(p.Out, format, args...)
+	_, _ = fmt.Fprintf(p.Out, format, args...)
 }
 
 // Warn reports something that did not fail the command — a push that could not
@@ -66,7 +66,7 @@ func (p *Printer) Warn(err error) {
 	}
 	for _, line := range strings.Split(err.Error(), "\n") {
 		if line = strings.TrimSpace(line); line != "" {
-			fmt.Fprintln(p.Err, "td: warning:", line)
+			_, _ = fmt.Fprintln(p.Err, "td: warning:", line)
 		}
 	}
 }
@@ -92,10 +92,10 @@ func (t Table) Write(w io.Writer) error {
 	}
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	if len(t.Header) > 0 {
-		fmt.Fprintln(tw, strings.Join(t.Header, "\t"))
+		_, _ = fmt.Fprintln(tw, strings.Join(t.Header, "\t"))
 	}
 	for _, row := range t.Rows {
-		fmt.Fprintln(tw, strings.Join(row, "\t"))
+		_, _ = fmt.Fprintln(tw, strings.Join(row, "\t"))
 	}
 	return tw.Flush()
 }

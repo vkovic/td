@@ -52,12 +52,12 @@ func newWatcher(s *store.Store, debounce time.Duration) (*watcher, error) {
 	// The root first: it is where a new project directory appears, and where
 	// the global list's own items live.
 	if err := w.add(w.root); err != nil {
-		fsw.Close()
+		_ = fsw.Close()
 		return nil, err
 	}
 	scopes, err := s.Scopes()
 	if err != nil {
-		fsw.Close()
+		_ = fsw.Close()
 		return nil, err
 	}
 	for _, scope := range scopes {

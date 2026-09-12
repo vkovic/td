@@ -1,3 +1,12 @@
+// Package store is td's persistence layer: the ~/.td directory, the markdown
+// files with YAML frontmatter that are the items, and the scopes and areas
+// those files are filed under.
+//
+// The store is the only thing that reads or writes an item. Every surface —
+// the CLI, the terminal interface, and the /td skill through the CLI — goes
+// through it, which is what keeps them from disagreeing about what an item is.
+// A file is the record: an item's location on disk says which list and which
+// area it belongs to, and nothing else records that.
 package store
 
 import (
@@ -500,8 +509,8 @@ func writeAtomic(path string, data []byte) error {
 	}
 	tmp := f.Name()
 	cleanup := func() {
-		f.Close()
-		os.Remove(tmp)
+		_ = f.Close()
+		_ = os.Remove(tmp)
 	}
 	if _, err := f.Write(data); err != nil {
 		cleanup()
@@ -512,15 +521,15 @@ func writeAtomic(path string, data []byte) error {
 		return fmt.Errorf("syncing %s: %w", tmp, err)
 	}
 	if err := f.Close(); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("closing %s: %w", tmp, err)
 	}
 	if err := os.Chmod(tmp, 0o644); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("setting permissions on %s: %w", tmp, err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("renaming %s into place at %s: %w", tmp, path, err)
 	}
 	return nil

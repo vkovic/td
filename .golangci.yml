@@ -1,0 +1,57 @@
+# golangci-lint configuration. Run it with `make lint`, which pins the version.
+version: "2"
+
+linters:
+  # The standard set is errcheck, govet, ineffassign, staticcheck and unused.
+  default: standard
+  enable:
+    - bodyclose
+    - copyloopvar
+    - misspell
+    - nilerr
+    - revive
+    - unconvert
+    - unparam
+
+  settings:
+    revive:
+      rules:
+        # td documents every exported identifier and most unexported ones, so
+        # hold that line rather than letting the next package drift from it.
+        - name: exported
+        - name: package-comments
+        - name: error-strings
+        - name: error-return
+        - name: errorf
+        - name: context-as-argument
+        - name: indent-error-flow
+        - name: var-declaration
+        - name: unreachable-code
+        - name: superfluous-else
+    misspell:
+      ignore-rules:
+        # A deliberate typo: the config tests write done_ttl_dyas to check that
+        # td warns about a key it does not recognize rather than ignoring it.
+        - dyas
+    staticcheck:
+      checks:
+        - all
+        # De Morgan on a chained comparison. "not (box < tag < title)" says the
+        # three are out of order; "box >= tag || tag >= title" makes the reader
+        # reassemble that from two halves.
+        - -QF1001
+
+  exclusions:
+    generated: lax
+    rules:
+      # A test's job is to fail loudly, and t.Fatal covers what an unchecked
+      # error would have reported. Requiring every os.Setenv and json.Unmarshal
+      # in a fixture to be checked buys nothing and obscures the assertion.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - unparam
+
+formatters:
+  enable:
+    - gofmt

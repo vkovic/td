@@ -38,7 +38,9 @@ func (a *app) ui() error {
 	if err != nil {
 		return err
 	}
-	defer m.Close()
+	// Closing releases the file watcher. A failure to is not worth reporting:
+	// the process is on its way out and the descriptors go with it.
+	defer func() { _ = m.Close() }()
 	// The alternate screen keeps the list off the scrollback: the pane is a
 	// view of the store, not a transcript of one.
 	_, err = tea.NewProgram(m, tea.WithAltScreen()).Run()

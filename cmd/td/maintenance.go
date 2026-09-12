@@ -60,7 +60,6 @@ func newMaintenanceCmds(a *app) []*cobra.Command {
 
 	cmds := make([]*cobra.Command, 0, len(specs))
 	for _, spec := range specs {
-		spec := spec
 		var message string
 		cmd := &cobra.Command{
 			Use:   spec.use,
