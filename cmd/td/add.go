@@ -55,7 +55,7 @@ func (a *app) add(title string, f addFlags) error {
 		return err
 	}
 
-	created := now()
+	created := a.now()
 	it := &store.Item{
 		ID:      store.NewID(),
 		Title:   title,

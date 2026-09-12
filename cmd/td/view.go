@@ -124,7 +124,3 @@ type mutationResult struct {
 	Items    []itemView   `json:"items"`
 	Epilogue epilogueView `json:"epilogue"`
 }
-
-// now is the timestamp a mutation records: UTC, to the second, matching what
-// frontmatter can represent.
-func now() time.Time { return store.Now() }

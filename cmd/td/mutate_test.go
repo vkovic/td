@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vkovic/td/internal/gitx"
 	"github.com/vkovic/td/internal/store"
@@ -492,5 +493,36 @@ func TestNoEpilogueSkipsTheCommit(t *testing.T) {
 	}
 	if len(h.list(store.Active)) != 1 {
 		t.Error("--no-epilogue also skipped writing the item")
+	}
+}
+
+// TestTheClockIsInjectable pins what the seam is for. One clock decides both
+// the instant a command stamps an item with and the instant the archive sweep
+// measures a done TTL against, and a test can choose it.
+//
+// Without it the CLI could fix neither, which is how TestLsOrdering came to
+// pass for a week and fail ever after: its fixture named a calendar day, the
+// sweep compared against the real one, and the gap between them grew.
+func TestTheClockIsInjectable(t *testing.T) {
+	h := newHarness(t)
+	at := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	h.freeze(at)
+
+	item := h.mutation("add", "Pinned").Items[0]
+	if !item.Created.Equal(at) || !item.Updated.Equal(at) {
+		t.Errorf("created = %s and updated = %s, want both %s", item.Created, item.Updated, at)
+	}
+
+	// Completed at the frozen instant, the item is no days old however long ago
+	// that date really was, so the sweep leaves it in the list.
+	h.mustRun("done", item.ID)
+	if got := ids(h.lsJSON("--done").Items); len(got) != 1 {
+		t.Errorf("td ls --done listed %v, want the item still in the list", got)
+	}
+
+	// Eight days on — a day past the default TTL — the same item is swept out.
+	h.freeze(at.AddDate(0, 0, 8))
+	if got := ids(h.lsJSON("--done").Items); len(got) != 0 {
+		t.Errorf("td ls --done listed %v eight days on, want it archived", got)
 	}
 }

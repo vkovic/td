@@ -49,7 +49,7 @@ func (a *app) setDone(prefixes []string, done bool) error {
 		return err
 	}
 
-	stamp := now()
+	stamp := a.now()
 	for i, e := range entries {
 		it := e.Item
 		if done {

@@ -28,7 +28,7 @@ func (a *app) remove(prefixes []string) error {
 		return err
 	}
 
-	stamp := now()
+	stamp := a.now()
 	for i, e := range entries {
 		e.Item.Updated = stamp
 		ref, err := a.store.Move(e.Ref, e.Item, e.Ref.Scope, store.Deleted)
@@ -60,7 +60,7 @@ func (a *app) restore(prefixes []string) error {
 		return err
 	}
 
-	stamp := now()
+	stamp := a.now()
 	for i, e := range entries {
 		e.Item.Updated = stamp
 		ref, err := a.store.Move(e.Ref, e.Item, e.Ref.Scope, store.Active)

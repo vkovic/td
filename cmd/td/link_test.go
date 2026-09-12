@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vkovic/td/internal/gitx"
 	"github.com/vkovic/td/internal/store"
@@ -20,6 +21,17 @@ type harness struct {
 	t    *testing.T
 	root string
 	wd   string
+
+	// now is the clock the commands run on. It is the real one unless a test
+	// replaces it, which is what a test asserting on an exact timestamp or on
+	// what the archive sweep decided has to do.
+	now func() time.Time
+}
+
+// freeze pins the harness's clock, so every command run after it stamps that
+// instant and the epilogue measures the done TTL against it.
+func (h *harness) freeze(at time.Time) {
+	h.now = func() time.Time { return at }
 }
 
 // newHarness points TD_ROOT at a temp store, isolates git, and chdirs into a
@@ -45,7 +57,7 @@ func newHarness(t *testing.T) *harness {
 	}
 	t.Cleanup(func() { os.Chdir(prev) })
 
-	return &harness{t: t, root: root, wd: wd}
+	return &harness{t: t, root: root, wd: wd, now: store.Now}
 }
 
 // run executes the CLI with the given arguments, returning its streams.
@@ -58,7 +70,7 @@ func (h *harness) run(args ...string) (stdout, stderr string, err error) {
 func (h *harness) runStdin(stdin string, args ...string) (stdout, stderr string, err error) {
 	h.t.Helper()
 	var out, errOut bytes.Buffer
-	cmd := newRootCmdIO(&out, &errOut, strings.NewReader(stdin))
+	cmd := newRootCmdIO(&out, &errOut, strings.NewReader(stdin), withClock(h.now))
 	cmd.SetArgs(args)
 	err = cmd.Execute()
 	return out.String(), errOut.String(), err

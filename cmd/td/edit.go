@@ -66,7 +66,7 @@ func (a *app) edit(prefixes []string, f editFlags, changed func(string) bool) er
 		}
 	}
 
-	stamp := now()
+	stamp := a.now()
 	for _, e := range entries {
 		it := e.Item
 		if changed("title") {

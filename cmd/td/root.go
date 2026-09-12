@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -38,6 +39,17 @@ type app struct {
 	stdout io.Writer
 	stderr io.Writer
 	in     io.Reader
+
+	// now is the clock. Every command stamps created, updated and done_at from
+	// it, and the epilogue measures the done TTL against it, so pinning it here
+	// pins both — which is what lets a test assert on an exact timestamp and on
+	// what the archive sweep did.
+	//
+	// store.Now by default, never time.Now: the value is written into a file
+	// whose mtime is then pinned to it, and a clock carrying nanoseconds leaves
+	// the two unequal, which is precisely what the next bump reads as an edit
+	// made outside td.
+	now func() time.Time
 }
 
 // stdin is where --body-file - reads from.
@@ -77,6 +89,7 @@ func (a *app) runEpilogue(steps epilogue.Step, message string) (epilogue.Result,
 		Config:  a.cfg,
 		Steps:   steps,
 		Message: message,
+		Now:     a.now,
 	})
 	a.out.Warnings(res.Warnings)
 	return res, err
@@ -88,10 +101,21 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	return newRootCmdIO(stdout, stderr, os.Stdin)
 }
 
+// withClock pins the clock the commands stamp and the epilogue measures
+// against, so a test can assert on an exact timestamp and on what the archive
+// sweep decided rather than on whatever today happens to be.
+func withClock(now func() time.Time) func(*app) {
+	return func(a *app) { a.now = now }
+}
+
 // newRootCmdIO builds the command tree over explicit streams, so a test can
-// drive --body-file - without touching the process's own.
-func newRootCmdIO(stdout, stderr io.Writer, stdin io.Reader) *cobra.Command {
-	a := &app{stdout: stdout, stderr: stderr, in: stdin}
+// drive --body-file - without touching the process's own. The options are how
+// a test reaches the parts of the app the command line cannot name.
+func newRootCmdIO(stdout, stderr io.Writer, stdin io.Reader, opts ...func(*app)) *cobra.Command {
+	a := &app{stdout: stdout, stderr: stderr, in: stdin, now: store.Now}
+	for _, opt := range opts {
+		opt(a)
+	}
 
 	root := &cobra.Command{
 		Use:   "td",
