@@ -109,20 +109,44 @@ func TestEditAppendsAParagraphRatherThanOverwriting(t *testing.T) {
 
 // TestEditRefusesToBlankATitle: an item with no title has no handle anyone
 // could find it by, so replacing one with nothing is refused rather than done.
+// Whitespace is nothing. td edit --title "  " used to be accepted, which left
+// an item whose file slugs to untitled and whose row in the list renders blank
+// — a state td add has always refused to create.
 func TestEditRefusesToBlankATitle(t *testing.T) {
-	svc := newService(t, time.Date(2026, 9, 12, 8, 0, 0, 0, time.UTC))
-	e := add(t, svc, "Buy milk")
-	blank := ""
+	for _, tc := range []struct{ name, title string }{
+		{"nothing at all", ""},
+		{"spaces", "   "},
+		{"a tab and a newline", "\t\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newService(t, time.Date(2026, 9, 12, 8, 0, 0, 0, time.UTC))
+			e := add(t, svc, "Buy milk")
 
-	if _, err := svc.Edit([]store.Entry{e}, Change{Title: &blank}); !errors.Is(err, ErrEmptyTitle) {
-		t.Fatalf("Edit error = %v, want ErrEmptyTitle", err)
+			if _, err := svc.Edit([]store.Entry{e}, Change{Title: &tc.title}); !errors.Is(err, ErrEmptyTitle) {
+				t.Fatalf("Edit error = %v, want ErrEmptyTitle", err)
+			}
+			back, err := svc.store.Resolve(e.Item.ID, store.Global, store.Active)
+			if err != nil {
+				t.Fatalf("reading the item back: %v", err)
+			}
+			if back.Item.Title != "Buy milk" {
+				t.Errorf("Title = %q, want the refused edit to have written nothing", back.Item.Title)
+			}
+		})
 	}
-	back, err := svc.store.Resolve(e.Item.ID, store.Global, store.Active)
-	if err != nil {
-		t.Fatalf("reading the item back: %v", err)
-	}
-	if back.Item.Title != "Buy milk" {
-		t.Errorf("Title = %q, want the refused edit to have written nothing", back.Item.Title)
+}
+
+// TestEditStoresATitleTrimmed: Add trims before it stores, so Edit does too.
+// Otherwise the same two words typed into td add and td edit --title would
+// produce items whose titles sort and render differently.
+func TestEditStoresATitleTrimmed(t *testing.T) {
+	svc := newService(t, time.Date(2026, 9, 12, 8, 0, 0, 0, time.UTC))
+	title := "  Buy oat milk  "
+
+	it := edited(t, svc, AddRequest{Title: "Buy milk"}, Change{Title: &title})
+
+	if it.Title != "Buy oat milk" {
+		t.Errorf("Title = %q, want it stored trimmed", it.Title)
 	}
 }
 

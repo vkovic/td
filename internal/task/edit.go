@@ -62,18 +62,23 @@ func (s *Service) Edit(entries []store.Entry, ch Change) (Result, error) {
 	// entry, and a guard that rejects on the second item has already written
 	// the first.
 	//
-	// Not TrimSpace, unlike Add: a title of spaces is refused on the way in and
-	// tolerated on the way through, which is how td has always behaved and is
-	// not this change's business to settle.
-	if ch.Title != nil && *ch.Title == "" {
-		return Result{}, ErrEmptyTitle
+	// Trimmed the way Add trims. A title of spaces used to be refused on the
+	// way in and tolerated on the way through, which left an item whose
+	// filename slugs to untitled and whose row in the list renders blank. The
+	// two ways of naming an item now agree on what counts as a name.
+	title := ""
+	if ch.Title != nil {
+		title = strings.TrimSpace(*ch.Title)
+		if title == "" {
+			return Result{}, ErrEmptyTitle
+		}
 	}
 
 	stamp := s.now()
 	for _, e := range entries {
 		it := e.Item
 		if ch.Title != nil {
-			it.Title = *ch.Title
+			it.Title = title
 		}
 		if ch.Body != nil {
 			it.Body = *ch.Body

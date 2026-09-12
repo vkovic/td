@@ -1,6 +1,8 @@
 package main
 
 import (
+	"strings"
+
 	"github.com/spf13/cobra"
 
 	"github.com/vkovic/td/internal/store"
@@ -80,7 +82,7 @@ func (a *app) edit(prefixes []string, f editFlags, changed func(string) bool) er
 func (a *app) editChange(f editFlags, changed func(string) bool) (task.Change, error) {
 	var ch task.Change
 	if changed("title") {
-		if f.title == "" {
+		if strings.TrimSpace(f.title) == "" {
 			return ch, usagef("%v", task.ErrEmptyTitle)
 		}
 		ch.Title = &f.title

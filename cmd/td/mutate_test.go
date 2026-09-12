@@ -183,6 +183,31 @@ func TestAddIntoAProjectScope(t *testing.T) {
 	}
 }
 
+// TestEditRefusesATitleOfWhitespace: td add "  " is a usage error, so
+// td edit --title "  " is one too, and the message is the same. The check is
+// in editChange as well as in task.Edit so that a blank title is reported as
+// the usage fault it is rather than as a failed write.
+func TestEditRefusesATitleOfWhitespace(t *testing.T) {
+	h := newHarness(t)
+	id := h.mutation("add", "Original").Items[0].ID
+
+	_, _, err := h.run("edit", id, "--title", "   ")
+	if err == nil {
+		t.Fatal("td edit --title \"   \" = nil, want an error")
+	}
+	if !strings.Contains(err.Error(), "needs a title") {
+		t.Errorf("error = %v, want it to say an item needs a title", err)
+	}
+	if got := exitCode(err); got != exitUsage {
+		t.Errorf("exit code = %d, want %d: a blank title is the caller's mistake, not the store's", got, exitUsage)
+	}
+
+	e := only(t, h.list(store.Active), "the live list")
+	if e.Item.Title != "Original" {
+		t.Errorf("title = %q, want the refused edit to have written nothing", e.Item.Title)
+	}
+}
+
 func TestEditChangesOnlyWhatIsNamed(t *testing.T) {
 	h := newHarness(t)
 	added := h.mutation("add", "Original", "-t", "one", "--due", "2026-09-30", "-b", "Original body.")
