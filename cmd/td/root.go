@@ -12,6 +12,7 @@ import (
 	"github.com/vkovic/td/internal/epilogue"
 	"github.com/vkovic/td/internal/output"
 	"github.com/vkovic/td/internal/store"
+	"github.com/vkovic/td/internal/task"
 )
 
 // globalFlags are the flags every subcommand accepts.
@@ -31,6 +32,10 @@ type app struct {
 	flags globalFlags
 	out   *output.Printer
 	store *store.Store
+
+	// tasks performs the item operations. Both surfaces call the same service,
+	// so td add from a shell and a from the pane write the same file.
+	tasks *task.Service
 	cfg   config.Config
 	scope store.ScopeChoice
 
@@ -193,6 +198,7 @@ func (a *app) setup() error {
 	if a.store, err = store.Open(root); err != nil {
 		return err
 	}
+	a.tasks = task.New(a.store, a.now)
 	if a.cfg, err = config.Load(root); err != nil {
 		return err
 	}

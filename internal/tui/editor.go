@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/vkovic/td/internal/store"
+	"github.com/vkovic/td/internal/task"
 )
 
 // editorFinishedMsg arrives when the editor has exited. Its error is the
@@ -113,28 +114,22 @@ func splitCommand(s string) ([]string, error) {
 // addItem creates an item from a title and opens it in the editor, so the body
 // is written in the same gesture that created it.
 //
-// This is td add's own sequence: a fresh id, the same instant for created and
-// updated, and the source recorded — as tui here, because the item was raised
-// at this keyboard rather than by Claude or by a shell.
+// The item itself is td add's own sequence, because it is td add: the same
+// service builds both. Only the source differs — tui here, because the item was
+// raised at this keyboard rather than by Claude or by a shell.
 func (m *Model) addItem(title string) tea.Cmd {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return nil
+	res, err := m.tasks.Add(task.AddRequest{
+		Scope:  m.currentAddScope(),
+		Title:  title,
+		Source: SourceTUI,
+	})
+	if errors.Is(err, task.ErrEmptyTitle) {
+		return nil // an empty prompt is an add nobody made, not a failure
 	}
-	created := m.now()
-	it := &store.Item{
-		ID:      store.NewID(),
-		Title:   title,
-		Created: created,
-		Updated: created,
-		Source:  SourceTUI,
-		Context: store.WorkingContext(),
-	}
-	ref, err := m.store.Save(m.currentAddScope(), store.Active, it)
 	if err != nil {
 		return func() tea.Msg { return editorFinishedMsg{action: "add", err: err} }
 	}
-	return m.editItem("add", store.Entry{Item: it, Ref: ref})
+	return m.editItem("add", res.Entries[0])
 }
 
 // SourceTUI is what an item raised in the terminal interface records as its
@@ -157,11 +152,13 @@ func (m *Model) currentAddScope() store.Scope {
 	return m.currentScope()
 }
 
-// commitMessage describes a change for git, mirroring the CLI's own so the
-// store's history reads the same whichever surface made the change.
+// commitMessage describes a change for git. The rule itself lives in
+// internal/task, so both surfaces write the same history; the TUI needs it at a
+// different moment — once the editor has exited, not when the change was made —
+// and holds one entry rather than the slice a Result carries.
 func commitMessage(action string, it *store.Item) string {
 	if it == nil {
 		return ""
 	}
-	return fmt.Sprintf("td: %s %s %s", action, it.ID, it.Title)
+	return task.CommitMessage(action, []store.Entry{{Item: it}})
 }

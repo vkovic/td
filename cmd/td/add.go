@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/vkovic/td/internal/store"
+	"github.com/vkovic/td/internal/task"
 )
 
 // addFlags are td add's own flags.
@@ -41,10 +42,14 @@ func newAddCmd(a *app) *cobra.Command {
 }
 
 // add creates one item and commits it.
+//
+// The title is checked here as well as in the service so that the complaint a
+// person sees is the first thing wrong with what they typed: an add with no
+// title and a bad --body-file has two faults, and the missing title is the one
+// worth reporting. The message is the service's either way.
 func (a *app) add(title string, f addFlags) error {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return usagef("an item needs a title")
+	if strings.TrimSpace(title) == "" {
+		return usagef("%v", task.ErrEmptyTitle)
 	}
 	if f.body != "" && f.bodyFile != "" {
 		return usagef("use either --body or --body-file, not both")
@@ -55,32 +60,29 @@ func (a *app) add(title string, f addFlags) error {
 		return err
 	}
 
-	created := a.now()
-	it := &store.Item{
-		ID:      store.NewID(),
-		Title:   title,
-		Tags:    cleanTags(f.tags),
-		Created: created,
-		Updated: created,
-		Context: store.WorkingContext(),
-		Body:    body,
+	p := a.provenance()
+	req := task.AddRequest{
+		Scope:       a.scope.Scope,
+		Title:       title,
+		Tags:        cleanTags(f.tags),
+		Body:        body,
+		Source:      p.Source,
+		SessionName: p.SessionName,
+		SessionID:   p.SessionID,
 	}
 	if f.due != "" {
 		due, err := store.ParseDate(f.due)
 		if err != nil {
 			return &usageError{err: err}
 		}
-		it.Due = &due
+		req.Due = &due
 	}
-	p := a.provenance()
-	it.Source, it.ClaudeSessionName, it.ClaudeSessionID = p.Source, p.SessionName, p.SessionID
 
-	ref, err := a.store.Save(a.scope.Scope, store.Active, it)
+	res, err := a.tasks.Add(req)
 	if err != nil {
 		return err
 	}
-	entries := []store.Entry{{Item: it, Ref: ref}}
-	return a.finish("add", commitMessage("add", entries), entries)
+	return a.finish(res.Action, res.Message, res.Entries)
 }
 
 // readBody resolves the body from the flag, a file, or standard input.

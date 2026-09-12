@@ -17,6 +17,7 @@ import (
 	"github.com/vkovic/td/internal/config"
 	"github.com/vkovic/td/internal/epilogue"
 	"github.com/vkovic/td/internal/store"
+	"github.com/vkovic/td/internal/task"
 )
 
 // scopeView is which list the pane is showing: one scope, or every scope
@@ -47,6 +48,10 @@ func (v scopeView) label() string {
 // what the store and configuration behind it are.
 type Model struct {
 	store *store.Store
+
+	// tasks performs the item operations, the same service cmd/td calls, so an
+	// item raised here and one raised by td add are built the same way.
+	tasks *task.Service
 	cfg   config.Config
 	scope store.ScopeChoice
 
@@ -184,6 +189,9 @@ func New(opts Options) (*Model, error) {
 	if m.exec == nil {
 		m.exec = tea.ExecProcess
 	}
+	// After the clock is resolved, so the service stamps from the same one the
+	// pane and its epilogue read.
+	m.tasks = task.New(opts.Store, m.now)
 	if err := m.reload(); err != nil {
 		return nil, err
 	}
