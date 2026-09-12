@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/vkovic/td/internal/tdtest"
 )
 
 // Exit codes td documents. They are repeated here rather than imported, so a
@@ -76,15 +78,8 @@ func (c *cli) run(args ...string) (stdout, stderr string, code int) {
 	c.t.Helper()
 	cmd := exec.Command(binary, args...)
 	cmd.Dir = c.dir
-	cmd.Env = append(os.Environ(),
-		"TD_ROOT="+c.root,
-		"GIT_CONFIG_GLOBAL="+filepath.Join(c.root, "..", "gitconfig"),
-		"GIT_CONFIG_SYSTEM="+filepath.Join(c.root, "..", "gitconfig-system"),
-		"GIT_AUTHOR_NAME=td test",
-		"GIT_AUTHOR_EMAIL=td@example.invalid",
-		"GIT_COMMITTER_NAME=td test",
-		"GIT_COMMITTER_EMAIL=td@example.invalid",
-	)
+	cmd.Env = append(os.Environ(), "TD_ROOT="+c.root)
+	cmd.Env = append(cmd.Env, tdtest.GitEnv(filepath.Dir(c.root))...)
 	var out, errOut strings.Builder
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut

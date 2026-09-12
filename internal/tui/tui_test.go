@@ -18,6 +18,7 @@ import (
 
 	"github.com/vkovic/td/internal/config"
 	"github.com/vkovic/td/internal/store"
+	"github.com/vkovic/td/internal/tdtest"
 )
 
 // clock is the instant every test renders against, so "3 days ago" and
@@ -30,22 +31,10 @@ func at(t time.Time) func() time.Time { return func() time.Time { return t } }
 // ago is an instant a number of hours before the fixed clock.
 func ago(hours int) time.Time { return clock.Add(-time.Duration(hours) * time.Hour) }
 
-// isolate keeps git from reading the developer's own configuration, following
-// the same conventions as cmd/td's harness.
-func isolate(t *testing.T) {
-	t.Helper()
-	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "gitconfig"))
-	t.Setenv("GIT_CONFIG_SYSTEM", filepath.Join(t.TempDir(), "gitconfig-system"))
-	t.Setenv("GIT_AUTHOR_NAME", "td test")
-	t.Setenv("GIT_AUTHOR_EMAIL", "td@example.invalid")
-	t.Setenv("GIT_COMMITTER_NAME", "td test")
-	t.Setenv("GIT_COMMITTER_EMAIL", "td@example.invalid")
-}
-
 // newStore opens a store in a temp TD_ROOT with git isolated.
 func newStore(t *testing.T) *store.Store {
 	t.Helper()
-	isolate(t)
+	tdtest.IsolateGit(t)
 	root := filepath.Join(t.TempDir(), ".td")
 	t.Setenv(store.EnvRoot, root)
 	s, err := store.Open(root)

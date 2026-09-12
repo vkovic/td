@@ -6,24 +6,14 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-)
 
-// isolate keeps git from reading the developer's own configuration, so a test
-// asserts on td's behavior and not on whatever is set in ~/.gitconfig.
-func isolate(t *testing.T) {
-	t.Helper()
-	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "gitconfig"))
-	t.Setenv("GIT_CONFIG_SYSTEM", filepath.Join(t.TempDir(), "gitconfig-system"))
-	t.Setenv("GIT_AUTHOR_NAME", "td test")
-	t.Setenv("GIT_AUTHOR_EMAIL", "td@example.invalid")
-	t.Setenv("GIT_COMMITTER_NAME", "td test")
-	t.Setenv("GIT_COMMITTER_EMAIL", "td@example.invalid")
-}
+	"github.com/vkovic/td/internal/tdtest"
+)
 
 // newRepo returns an initialized repository in a temp directory.
 func newRepo(t *testing.T) *Repo {
 	t.Helper()
-	isolate(t)
+	tdtest.IsolateGit(t)
 	r := New(t.TempDir())
 	if err := r.Init(); err != nil {
 		t.Fatalf("Init: %v", err)
@@ -61,7 +51,7 @@ func commitCount(t *testing.T, r *Repo) int {
 }
 
 func TestInitCreatesRepoAndIsIdempotent(t *testing.T) {
-	isolate(t)
+	tdtest.IsolateGit(t)
 	r := New(t.TempDir())
 
 	exists, err := r.Exists()

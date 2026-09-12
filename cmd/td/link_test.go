@@ -11,6 +11,7 @@ import (
 
 	"github.com/vkovic/td/internal/gitx"
 	"github.com/vkovic/td/internal/store"
+	"github.com/vkovic/td/internal/tdtest"
 )
 
 // harness is a td process's worth of state: an isolated store root and an
@@ -27,12 +28,7 @@ func newHarness(t *testing.T) *harness {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), ".td")
 	t.Setenv(store.EnvRoot, root)
-	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "gitconfig"))
-	t.Setenv("GIT_CONFIG_SYSTEM", filepath.Join(t.TempDir(), "gitconfig-system"))
-	t.Setenv("GIT_AUTHOR_NAME", "td test")
-	t.Setenv("GIT_AUTHOR_EMAIL", "td@example.invalid")
-	t.Setenv("GIT_COMMITTER_NAME", "td test")
-	t.Setenv("GIT_COMMITTER_EMAIL", "td@example.invalid")
+	tdtest.IsolateGit(t)
 
 	wd := t.TempDir()
 	// macOS hands out /var symlinks for temp directories; resolve them so the
