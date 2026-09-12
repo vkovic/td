@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/vkovic/td/internal/store"
+	"github.com/vkovic/td/internal/task"
 )
 
 // newDoneCmd builds td done.
@@ -34,44 +34,17 @@ func newUndoCmd(a *app) *cobra.Command {
 	}
 }
 
-// setDone stamps or clears done_at on each item. Reopening looks in the archive
-// too, so an item swept out can be brought back into the list by undoing it.
+// setDone hands td done and td undo to the service, which owns what completing
+// an item means — including that reopening looks in the archive too, so an item
+// already swept out comes back into the list.
 func (a *app) setDone(prefixes []string, done bool) error {
-	areas := []store.Area{store.Active}
-	action := "done"
-	if !done {
-		areas = append(areas, store.Archived)
-		action = "undo"
-	}
-
-	entries, err := a.resolveAll(prefixes, areas...)
+	res, err := a.tasks.SetDone(task.StatusRequest{
+		Scope: a.scope.Scope,
+		IDs:   prefixes,
+		Done:  done,
+	})
 	if err != nil {
 		return err
 	}
-
-	stamp := a.now()
-	for i, e := range entries {
-		it := e.Item
-		if done {
-			at := stamp
-			it.DoneAt = &at
-		} else {
-			it.DoneAt = nil
-		}
-		it.Updated = stamp
-
-		// An item reopened out of the archive belongs back in the list.
-		if !done && e.Ref.Area == store.Archived {
-			ref, err := a.store.Move(e.Ref, it, e.Ref.Scope, store.Active)
-			if err != nil {
-				return err
-			}
-			entries[i].Ref = ref
-			continue
-		}
-		if _, err := a.store.Save(e.Ref.Scope, e.Ref.Area, it); err != nil {
-			return err
-		}
-	}
-	return a.finish(action, commitMessage(action, entries), entries)
+	return a.finish(res)
 }

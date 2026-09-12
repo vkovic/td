@@ -5,35 +5,31 @@ import (
 
 	"github.com/vkovic/td/internal/config"
 	"github.com/vkovic/td/internal/store"
+	"github.com/vkovic/td/internal/task"
 )
 
-// toggleDone stamps or clears done_at on the selected item, which is what makes
-// an item done. This is td done and td undo's own sequence: the stamp and the
-// updated timestamp are the same instant, and the item stays in the list until
-// the archive sweep moves it out, done_ttl_days after it was completed.
+// toggleDone completes the selected item, or reopens it. It is td done and
+// td undo, because it is the same service call: the key press only decides
+// which way, from what the row already is.
+//
+// The row is looked up by the scope it is filed under rather than the pane's
+// own, because the merged view spans scopes and the selected row may not be in
+// the one this directory resolved to.
 func (m *Model) toggleDone() tea.Cmd {
 	e := m.Selected()
 	if e == nil {
 		return nil
 	}
-
-	it := e.Item
-	stamp := m.now()
-	action := "done"
-	if it.Done() {
-		it.DoneAt = nil
-		action = "undo"
-	} else {
-		at := stamp
-		it.DoneAt = &at
-	}
-	it.Updated = stamp
-
-	if _, err := m.store.Save(e.Ref.Scope, e.Ref.Area, it); err != nil {
+	res, err := m.tasks.SetDone(task.StatusRequest{
+		Scope: e.Ref.Scope,
+		IDs:   []string{e.Item.ID},
+		Done:  !e.Item.Done(),
+	})
+	if err != nil {
 		m.err = err
 		return nil
 	}
-	return m.runEpilogue(commitMessage(action, it))
+	return m.applied(e, res)
 }
 
 // removeItem moves the selected item to the trash, as td rm does.
@@ -45,14 +41,26 @@ func (m *Model) removeItem() tea.Cmd {
 	if e == nil {
 		return nil
 	}
-
-	it := e.Item
-	it.Updated = m.now()
-	if _, err := m.store.Move(e.Ref, it, e.Ref.Scope, store.Deleted); err != nil {
+	res, err := m.tasks.Remove(task.MoveRequest{Scope: e.Ref.Scope, IDs: []string{e.Item.ID}})
+	if err != nil {
 		m.err = err
 		return nil
 	}
-	return m.runEpilogue(commitMessage("remove", it))
+	return m.applied(e, res)
+}
+
+// applied puts what the service wrote back on the row and runs the epilogue.
+//
+// The row has to be updated here. The service resolves the id and works on its
+// own copy of the item, so the entry the list is holding is the one from before
+// the change, and the reload that would correct it only happens once the
+// epilogue finishes. Without this the pane would go on showing an item as open
+// for as long as a commit and a push take.
+func (m *Model) applied(row *store.Entry, res task.Result) tea.Cmd {
+	if len(res.Entries) > 0 {
+		*row = res.Entries[0]
+	}
+	return m.runEpilogue(res.Message)
 }
 
 // refresh runs the epilogue because it was asked for, rather than because

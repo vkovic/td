@@ -82,7 +82,7 @@ func (a *app) add(title string, f addFlags) error {
 	if err != nil {
 		return err
 	}
-	return a.finish(res.Action, res.Message, res.Entries)
+	return a.finish(res)
 }
 
 // readBody resolves the body from the flag, a file, or standard input.

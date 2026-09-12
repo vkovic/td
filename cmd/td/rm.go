@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/vkovic/td/internal/store"
+	"github.com/vkovic/td/internal/task"
 )
 
 // newRemoveCmd builds td rm.
@@ -21,23 +21,14 @@ func newRemoveCmd(a *app) *cobra.Command {
 	}
 }
 
-// remove moves items to the trash.
+// remove moves items to the trash. The service reports the action as "remove"
+// rather than "rm", which is what --json carries and what the /td plugin reads.
 func (a *app) remove(prefixes []string) error {
-	entries, err := a.resolveAll(prefixes, store.Active, store.Archived)
+	res, err := a.tasks.Remove(task.MoveRequest{Scope: a.scope.Scope, IDs: prefixes})
 	if err != nil {
 		return err
 	}
-
-	stamp := a.now()
-	for i, e := range entries {
-		e.Item.Updated = stamp
-		ref, err := a.store.Move(e.Ref, e.Item, e.Ref.Scope, store.Deleted)
-		if err != nil {
-			return err
-		}
-		entries[i].Ref = ref
-	}
-	return a.finish("remove", commitMessage("remove", entries), entries)
+	return a.finish(res)
 }
 
 // newRestoreCmd builds td restore.
@@ -53,21 +44,11 @@ func newRestoreCmd(a *app) *cobra.Command {
 	}
 }
 
-// restore returns items to the live list.
+// restore returns items to the live list, from the trash or from the archive.
 func (a *app) restore(prefixes []string) error {
-	entries, err := a.resolveAll(prefixes, store.Deleted, store.Archived)
+	res, err := a.tasks.Restore(task.MoveRequest{Scope: a.scope.Scope, IDs: prefixes})
 	if err != nil {
 		return err
 	}
-
-	stamp := a.now()
-	for i, e := range entries {
-		e.Item.Updated = stamp
-		ref, err := a.store.Move(e.Ref, e.Item, e.Ref.Scope, store.Active)
-		if err != nil {
-			return err
-		}
-		entries[i].Ref = ref
-	}
-	return a.finish("restore", commitMessage("restore", entries), entries)
+	return a.finish(res)
 }

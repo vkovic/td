@@ -4,6 +4,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/vkovic/td/internal/store"
+	"github.com/vkovic/td/internal/task"
 )
 
 // editFlags are td edit's own flags. Which of them were actually typed decides
@@ -54,7 +55,7 @@ func (a *app) edit(prefixes []string, f editFlags, changed func(string) bool) er
 		return usagef("edit needs something to change: --title, --body, --body-file, --append, --tag, or --due")
 	}
 
-	entries, err := a.resolveAll(prefixes, store.Active)
+	entries, err := a.tasks.ResolveAll(prefixes, a.scope.Scope, store.Active)
 	if err != nil {
 		return err
 	}
@@ -100,7 +101,11 @@ func (a *app) edit(prefixes []string, f editFlags, changed func(string) bool) er
 			return err
 		}
 	}
-	return a.finish("edit", commitMessage("edit", entries), entries)
+	return a.finish(task.Result{
+		Action:  "edit",
+		Entries: entries,
+		Message: task.CommitMessage("edit", entries),
+	})
 }
 
 // appendParagraph adds text to a body, separated by a blank line so the result

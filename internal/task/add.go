@@ -64,6 +64,5 @@ func (s *Service) Add(req AddRequest) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	entries := []store.Entry{{Item: it, Ref: ref}}
-	return Result{Action: "add", Entries: entries, Message: CommitMessage("add", entries)}, nil
+	return result("add", []store.Entry{{Item: it, Ref: ref}}), nil
 }

@@ -77,3 +77,9 @@ type Result struct {
 	// epilogue if and when it chooses to run one.
 	Message string
 }
+
+// result pairs what an operation did with the message describing it, so no
+// operation has to remember to build the message the same way as the others.
+func result(action string, entries []store.Entry) Result {
+	return Result{Action: action, Entries: entries, Message: CommitMessage(action, entries)}
+}
