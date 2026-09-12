@@ -167,7 +167,7 @@ done_at:
 }
 
 // TestHandWrittenFileGainsOnlyTheKeyItNeeds: setting a field whose key the
-// file does not have adds that one line, in the place §7 puts it, and leaves
+// file does not have adds that one line, in the place keyOrder puts it, and leaves
 // every other line where it was. The file is the user's; td is a guest in it.
 func TestHandWrittenFileGainsOnlyTheKeyItNeeds(t *testing.T) {
 	src := `---
@@ -230,7 +230,7 @@ func TestTagsGainedByAHandWrittenFileLandInOrder(t *testing.T) {
 }
 
 // TestItemTdCreatedStillCarriesTheSkeleton: an item td made has no file to
-// take its shape from, so it gets the full §7 skeleton — including the empty
+// take its shape from, so it gets the full skeleton — including the empty
 // tags and done_at lines that show a person what the file can hold.
 func TestItemTdCreatedStillCarriesTheSkeleton(t *testing.T) {
 	it := &Item{
@@ -253,7 +253,7 @@ done_at:
 ---
 `
 	if string(out) != want {
-		t.Errorf("a td-created item is no longer the §7 skeleton\n--- got ---\n%s\n--- want ---\n%s", out, want)
+		t.Errorf("a td-created item is no longer the canonical skeleton\n--- got ---\n%s\n--- want ---\n%s", out, want)
 	}
 }
 

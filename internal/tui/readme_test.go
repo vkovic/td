@@ -115,8 +115,8 @@ func TestReadmeDocumentsNoKeyThatDoesNothing(t *testing.T) {
 }
 
 // TestReadmeDocumentsTheEditorChainAsItIs: the README is what someone checks
-// before assuming the INTENT is current, so it has to name every link in the
-// chain config.Load actually walks, in the order it walks them. Asserting the
+// when td opens an editor they did not expect, so it has to name every link in
+// the chain config.Load actually walks, in the order it walks them. Asserting the
 // order and not just the names is deliberate: the README spent three
 // milestones claiming config.toml beat TD_EDITOR, which is backwards, and a
 // membership-only test never noticed.

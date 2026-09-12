@@ -342,7 +342,8 @@ func decodeTime(n *yaml.Node, dst *time.Time) error {
 // a file somebody wrote by hand keeps its shape: its keys stay in its order,
 // keys td does not recognize are untouched, and an optional key the file never
 // had is added only once it has something to say. An item td created has no
-// mapping to start from and is written in the canonical §7 shape.
+// mapping to start from and is written in the canonical shape instead, which
+// TestItemTdCreatedStillCarriesTheSkeleton pins byte for byte.
 func (it *Item) Marshal() ([]byte, error) {
 	m, err := it.frontmatter()
 	if err != nil {

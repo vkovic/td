@@ -138,9 +138,9 @@ func TestAddRecordsProvenance(t *testing.T) {
 	}
 }
 
-// TestAddRecordsTheWorkingDirectory: INTENT §7 has context hold the directory
-// an item was raised from, which is the whole reason an item raised mid-session
-// can be traced back to what the session was doing.
+// TestAddRecordsTheWorkingDirectory: context holds the directory an item was
+// raised from, which is the whole reason an item raised mid-session can be
+// traced back to what the session was doing.
 func TestAddRecordsTheWorkingDirectory(t *testing.T) {
 	h := newHarness(t)
 	// After the harness, which runs each test from a directory of its own —
@@ -425,9 +425,9 @@ func TestAmbiguousPrefixIsRejected(t *testing.T) {
 	}
 }
 
-// TestCommitTakesAMessage: INTENT §9.1 writes td commit -m, and a hand tidy
-// deserves a subject that says what it was rather than one describing a run
-// that recorded nothing.
+// TestCommitTakesAMessage: td commit takes -m, and a hand tidy deserves a
+// subject that says what it was rather than one describing a run that recorded
+// nothing.
 func TestCommitTakesAMessage(t *testing.T) {
 	h := newHarness(t)
 	h.mustRun("add", "Something")
