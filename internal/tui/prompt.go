@@ -1,12 +1,7 @@
 package tui
 
 import (
-	"strconv"
-	"strings"
-
 	tea "github.com/charmbracelet/bubbletea"
-
-	"github.com/vkovic/td/internal/epilogue"
 )
 
 // promptKind is which question the inline prompt is asking.
@@ -50,35 +45,4 @@ func (p *prompt) backspace() {
 	}
 	runes := []rune(p.value)
 	p.value = string(runes[:len(runes)-1])
-}
-
-// describe says what an epilogue run did, in the few words the footer has room
-// for. Pushed already means a push reached a remote, so a run with nowhere to
-// push says nothing about pushing.
-func describe(res epilogue.Result) string {
-	var parts []string
-	if n := len(res.Bumped); n > 0 {
-		parts = append(parts, plural(n, "hand edit", "hand edits")+" recorded")
-	}
-	if n := len(res.Archived); n > 0 {
-		parts = append(parts, plural(n, "item", "items")+" archived")
-	}
-	if res.Committed {
-		parts = append(parts, "committed")
-	}
-	if res.Pushed {
-		parts = append(parts, "pushed")
-	}
-	if len(parts) == 0 {
-		return "nothing to do"
-	}
-	return strings.Join(parts, ", ")
-}
-
-// plural renders a count with the right noun, as the CLI does.
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return "1 " + one
-	}
-	return strconv.Itoa(n) + " " + many
 }

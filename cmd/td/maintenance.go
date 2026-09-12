@@ -108,9 +108,9 @@ func writeMaintenance(w io.Writer, action string, res epilogue.Result) error {
 	var line string
 	switch action {
 	case "bump":
-		line = fmt.Sprintf("Recorded %s", plural(len(res.Bumped), "hand edit", "hand edits"))
+		line = fmt.Sprintf("Recorded %s", epilogue.Plural(len(res.Bumped), "hand edit", "hand edits"))
 	case "archive":
-		line = fmt.Sprintf("Archived %s", plural(len(res.Archived), "item", "items"))
+		line = fmt.Sprintf("Archived %s", epilogue.Plural(len(res.Archived), "item", "items"))
 	case "commit":
 		if !res.Committed {
 			line = "Nothing to commit"
@@ -126,12 +126,4 @@ func writeMaintenance(w io.Writer, action string, res epilogue.Result) error {
 	}
 	_, err := fmt.Fprintln(w, line)
 	return err
-}
-
-// plural renders a count with the right noun.
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return fmt.Sprintf("%d %s", n, one)
-	}
-	return fmt.Sprintf("%d %s", n, many)
 }

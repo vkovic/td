@@ -443,7 +443,7 @@ func (m *Model) afterEpilogue(msg epilogueDoneMsg) {
 		return
 	}
 	m.err = nil
-	m.status = describe(msg.res)
+	m.status = msg.res.Describe()
 	// The events this run just produced are still in flight. They will still
 	// reload the list; they will not be reported as somebody else's doing.
 	m.selfWriteUntil = m.now().Add(selfWriteFor)

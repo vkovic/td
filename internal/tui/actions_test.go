@@ -273,10 +273,10 @@ func TestTheDefaultClockDoesNotForgeAHandEdit(t *testing.T) {
 // TestStatusDoesNotClaimAPushWithoutARemote: a store with nowhere to push
 // comes back with Pushed false, and the status line says only what happened.
 func TestStatusDoesNotClaimAPushWithoutARemote(t *testing.T) {
-	if got := describe(epilogue.Result{Committed: true}); strings.Contains(got, "pushed") {
+	if got := (epilogue.Result{Committed: true}).Describe(); strings.Contains(got, "pushed") {
 		t.Errorf("the status is %q, want no push claimed for a result that pushed nothing", got)
 	}
-	if got := describe(epilogue.Result{Committed: true, Pushed: true}); !strings.Contains(got, "pushed") {
+	if got := (epilogue.Result{Committed: true, Pushed: true}).Describe(); !strings.Contains(got, "pushed") {
 		t.Errorf("the status is %q, want the push reported when one happened", got)
 	}
 }

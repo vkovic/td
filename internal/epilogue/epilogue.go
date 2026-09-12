@@ -7,6 +7,7 @@ package epilogue
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/vkovic/td/internal/config"
@@ -228,20 +229,48 @@ func defaultMessage(res Result) string {
 	switch {
 	case bumped > 0 && archived > 0:
 		return fmt.Sprintf("td: record %s, archive %s",
-			plural(bumped, "hand edit", "hand edits"), plural(archived, "item", "items"))
+			Plural(bumped, "hand edit", "hand edits"), Plural(archived, "item", "items"))
 	case bumped > 0:
-		return "td: record " + plural(bumped, "hand edit", "hand edits")
+		return "td: record " + Plural(bumped, "hand edit", "hand edits")
 	case archived > 0:
-		return "td: archive " + plural(archived, "item", "items")
+		return "td: archive " + Plural(archived, "item", "items")
 	default:
 		return "td: sync"
 	}
 }
 
-// plural renders a count with the right noun.
-func plural(n int, one, many string) string {
+// Plural renders a count with the right noun.
+//
+// It lives here, with the counts it describes, because it had three identical
+// copies — one in each surface and one here — and every caller of all three was
+// counting something this package had just finished doing.
+func Plural(n int, one, many string) string {
 	if n == 1 {
 		return fmt.Sprintf("%d %s", n, one)
 	}
 	return fmt.Sprintf("%d %s", n, many)
+}
+
+// Describe says what a run did, in the few words a status line has room for.
+//
+// Pushed already means a push reached a remote, so a run with nowhere to push
+// says nothing about pushing rather than claiming it pushed nothing.
+func (r Result) Describe() string {
+	var parts []string
+	if n := len(r.Bumped); n > 0 {
+		parts = append(parts, Plural(n, "hand edit", "hand edits")+" recorded")
+	}
+	if n := len(r.Archived); n > 0 {
+		parts = append(parts, Plural(n, "item", "items")+" archived")
+	}
+	if r.Committed {
+		parts = append(parts, "committed")
+	}
+	if r.Pushed {
+		parts = append(parts, "pushed")
+	}
+	if len(parts) == 0 {
+		return "nothing to do"
+	}
+	return strings.Join(parts, ", ")
 }
