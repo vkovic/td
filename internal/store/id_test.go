@@ -68,8 +68,9 @@ func TestIDConcurrentCallsAreUnique(t *testing.T) {
 func TestIDEncodesTimeOrder(t *testing.T) {
 	// Ids minutes apart must sort in time order, independent of the monotonic
 	// tiebreak that only kicks in within one millisecond.
-	early := newIDAt(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
-	late := newIDAt(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	g := NewIDGen(nil)
+	early := g.at(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	late := g.at(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	if early >= late {
 		t.Errorf("id ordering does not follow time: %q (Jan) >= %q (Jun)", early, late)
 	}
@@ -77,8 +78,8 @@ func TestIDEncodesTimeOrder(t *testing.T) {
 
 func TestIDStaysEightCharsThroughRange(t *testing.T) {
 	for _, when := range []time.Time{idEpoch, time.Now(), time.Date(2054, 1, 1, 0, 0, 0, 0, time.UTC)} {
-		if got := newIDAt(when); len(got) != idLen {
-			t.Errorf("newIDAt(%v) = %q, want %d characters", when, got, idLen)
+		if got := NewIDGen(nil).at(when); len(got) != idLen {
+			t.Errorf("an id minted at %v is %q, want %d characters", when, got, idLen)
 		}
 	}
 }
@@ -157,12 +158,50 @@ func TestShortIDTellsApartIDsFromTheSameSecond(t *testing.T) {
 	// Ids minted back to back share every leading character: the tail is the
 	// whole of what distinguishes them, which is why the tag is the tail.
 	now := time.Date(2026, 9, 12, 10, 0, 0, 0, time.UTC)
+	g := NewIDGen(nil)
 	seen := map[string]bool{}
 	for range 20 {
-		short := ShortID(newIDAt(now))
+		short := ShortID(g.at(now))
 		if seen[short] {
 			t.Fatalf("ShortID repeated %q within one millisecond", short)
 		}
 		seen[short] = true
+	}
+}
+
+// TestIDGenIsDeterministicAndIndependent pins what moving the counter off the
+// package bought. Two generators reading the same pinned clock mint the same
+// sequence, which a shared package-level counter could not do: whatever else
+// the process had minted would shift the second one.
+//
+// It is also what makes an id assertable. A feature that has to name an exact
+// id — a fixture, a golden file, a test for an ordering rule — needs a
+// generator it owns, not the process's.
+func TestIDGenIsDeterministicAndIndependent(t *testing.T) {
+	at := time.Date(2026, 9, 12, 10, 0, 0, 0, time.UTC)
+	pinned := func() *IDGen { return NewIDGen(func() time.Time { return at }) }
+
+	a, b := pinned(), pinned()
+	var first []string
+	for i := range 5 {
+		x, y := a.Next(), b.Next()
+		if x != y {
+			t.Fatalf("call %d minted %q from one generator and %q from another, want them independent", i, x, y)
+		}
+		first = append(first, x)
+	}
+
+	// Every id in that run encodes the same millisecond, so the sequence is
+	// the tiebreak doing its work: strictly ascending, one step at a time.
+	for i := 1; i < len(first); i++ {
+		if first[i] <= first[i-1] {
+			t.Errorf("id %d is %q, which does not follow %q", i, first[i], first[i-1])
+		}
+	}
+
+	// And a later instant outranks the whole run, so ids still sort by time.
+	later := NewIDGen(func() time.Time { return at.Add(time.Second) }).Next()
+	if later <= first[len(first)-1] {
+		t.Errorf("an id minted a second later is %q, which does not follow %q", later, first[len(first)-1])
 	}
 }

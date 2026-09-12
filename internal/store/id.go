@@ -24,35 +24,62 @@ var idEpoch = time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 // idMax is the largest value 8 base32 characters can hold.
 const idMax = 1<<40 - 1
 
-var idMu struct {
-	sync.Mutex
-	last uint64 // the last value handed out, so ids never repeat or go backwards
+// IDGen mints ids. It holds the last value it handed out, so ids from one
+// generator never repeat and never go backwards even when several are minted
+// inside the same millisecond.
+//
+// It is a type rather than a package-level counter so that a test can pin the
+// clock behind it and read back an exact sequence, and so two generators do not
+// silently share a counter. NewID is the process-wide one every surface uses.
+type IDGen struct {
+	mu   sync.Mutex
+	last uint64
+	now  func() time.Time
 }
 
-// NewID returns an 8-character id encoding the current millisecond. Ids issued
-// within the same millisecond are advanced by one, so a batch of ids generated
-// back to back is unique and strictly ascending — which is also what makes them
-// sort into creation order as filenames.
-func NewID() string {
-	return newIDAt(time.Now())
+// NewIDGen returns a generator reading the given clock. A nil clock means
+// time.Now.
+//
+// time.Now and not store.Now: an id encodes a millisecond, and a clock
+// truncated to the second would put every id minted inside one second through
+// the tiebreak below rather than through the time it is meant to encode.
+func NewIDGen(now func() time.Time) *IDGen {
+	if now == nil {
+		now = time.Now
+	}
+	return &IDGen{now: now}
 }
 
-func newIDAt(now time.Time) string {
+// Next returns the next id from this generator.
+func (g *IDGen) Next() string { return g.at(g.now()) }
+
+// at mints the id for an instant, advancing past the last one handed out.
+func (g *IDGen) at(now time.Time) string {
 	ms := now.Sub(idEpoch).Milliseconds()
 	var v uint64
 	if ms > 0 {
 		v = uint64(ms)
 	}
 
-	idMu.Lock()
-	if v <= idMu.last {
-		v = idMu.last + 1
+	g.mu.Lock()
+	if v <= g.last {
+		v = g.last + 1
 	}
-	idMu.last = v
-	idMu.Unlock()
+	g.last = v
+	g.mu.Unlock()
 
 	return encodeID(v)
 }
+
+// defaultIDGen is the generator behind NewID. One per process, so two items
+// created back to back anywhere in td cannot collide.
+var defaultIDGen = NewIDGen(nil)
+
+// NewID returns an 8-character id encoding the current millisecond. Ids issued
+// within the same millisecond are advanced by one, so a batch of ids generated
+// back to back is unique and strictly ascending — which is also what makes them
+// sort into creation order as filenames.
+func NewID() string { return defaultIDGen.Next() }
 
 // encodeID renders v as idLen base32 characters, most significant first.
 func encodeID(v uint64) string {
