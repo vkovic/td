@@ -29,7 +29,7 @@ func (m *Model) toggleDone() tea.Cmd {
 		m.err = err
 		return nil
 	}
-	return m.applied(e, res)
+	return m.applied(res)
 }
 
 // removeItem moves the selected item to the trash, as td rm does.
@@ -46,21 +46,46 @@ func (m *Model) removeItem() tea.Cmd {
 		m.err = err
 		return nil
 	}
-	return m.applied(e, res)
+	return m.applied(res)
 }
 
-// applied puts what the service wrote back on the row and runs the epilogue.
+// applied puts what the service wrote back into the listing and runs the
+// epilogue.
 //
-// The row has to be updated here. The service resolves the id and works on its
-// own copy of the item, so the entry the list is holding is the one from before
-// the change, and the reload that would correct it only happens once the
-// epilogue finishes. Without this the pane would go on showing an item as open
-// for as long as a commit and a push take.
-func (m *Model) applied(row *store.Entry, res task.Result) tea.Cmd {
+// It has to go into the loaded listing and not just the visible rows. The
+// service resolves the id and works on its own copy of the item, so what the
+// pane holds is the item as it was before the change, and the reload that would
+// correct it does not happen until the epilogue has committed and pushed.
+// Anything that rebuilds the rows inside that window rebuilds them from the
+// loaded listing — /, t and esc all do, and none of them waits — so a change
+// written only to the rows is undone by the next keystroke.
+//
+// Re-sorting is part of putting it back. An item that just became done belongs
+// below the rule, and the windowing in view.go derives the open and done cursor
+// positions from the listing being ordered that way: leaving a done item among
+// the open ones puts the cursor on a row the pane will not draw.
+func (m *Model) applied(res task.Result) tea.Cmd {
 	if len(res.Entries) > 0 {
-		*row = res.Entries[0]
+		m.replace(res.Entries[0])
 	}
 	return m.runEpilogue(res.Message)
+}
+
+// replace swaps a changed entry into the loaded listing, reorders it, and
+// rebuilds the rows around the item the cursor was on.
+func (m *Model) replace(e store.Entry) {
+	var anchor string
+	if sel := m.Selected(); sel != nil {
+		anchor = sel.Item.ID
+	}
+	for i := range m.entries {
+		if m.entries[i].Item.ID == e.Item.ID {
+			m.entries[i] = e
+			break
+		}
+	}
+	store.SortEntries(m.entries)
+	m.rebuild(anchor)
 }
 
 // refresh runs the epilogue because it was asked for, rather than because

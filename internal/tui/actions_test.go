@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/vkovic/td/internal/config"
 	"github.com/vkovic/td/internal/epilogue"
 	"github.com/vkovic/td/internal/store"
@@ -340,4 +342,82 @@ func crossedRule(t *testing.T, m *Model, title string) bool {
 		}
 	}
 	return false
+}
+
+// TestAnActionSurvivesTheRowsBeingRebuilt: x writes the change and puts the
+// result back on the row, but the listing is not re-read until the epilogue has
+// committed and pushed. Anything that rebuilds the visible rows inside that
+// window rebuilds them from the loaded listing, so the loaded listing has to
+// carry the change too — /, t and esc all rebuild, none of them waits, and none
+// is behind the busy gate.
+func TestAnActionSurvivesTheRowsBeingRebuilt(t *testing.T) {
+	s := newStore(t)
+	save(t, s, item{id: "aaa", title: "finish me", updated: ago(2)})
+	save(t, s, item{id: "bbb", title: "finish this too", updated: ago(1)})
+
+	m := newModel(t, s)
+	m.filters.title = "finish"
+	m.applyFilters()
+	m.cursor = indexOf(m, "finish me")
+
+	// The epilogue command is deliberately not drained: this is the window
+	// between the key press and the reload.
+	press(m, "x")
+	m.applyFilters()
+
+	if !findTitle(t, m, "finish me").Item.Done() {
+		t.Error("the item went back to open when the rows were rebuilt")
+	}
+	for _, e := range m.Loaded() {
+		if e.Item.ID == "aaa" && !e.Item.Done() {
+			t.Error("the loaded listing never learned the item was done")
+		}
+	}
+}
+
+// TestARemovalSurvivesTheRowsBeingRebuilt: the same window, for d. The row
+// stays on screen until the reload drops it either way, so what has to survive
+// a rebuild is where the item is now filed — a listing still calling it active
+// is one an action taken from it would resolve in the wrong area.
+func TestARemovalSurvivesTheRowsBeingRebuilt(t *testing.T) {
+	s := newStore(t)
+	save(t, s, item{id: "aaa", title: "delete me", updated: ago(2)})
+	save(t, s, item{id: "bbb", title: "delete nothing", updated: ago(1)})
+
+	m := newModel(t, s)
+	m.filters.title = "delete"
+	m.applyFilters()
+	m.cursor = indexOf(m, "delete me")
+
+	press(m, "d")
+	m.applyFilters()
+
+	for _, e := range m.Loaded() {
+		if e.Item.ID == "aaa" && e.Ref.Area != store.Deleted {
+			t.Errorf("the loaded listing still files the item under %q, want the trash", e.Ref.Area)
+		}
+	}
+}
+
+// TestTheCursorSurvivesAnItemBecomingDone: marking the top row done moves it
+// below the rule, and the pane derives where the open rows end and the done
+// rows begin from the listing being ordered that way. Leaving the item among
+// the open ones put the cursor on a row the windowing then declined to draw:
+// in a pane too short for everything, no marker appeared anywhere and the next
+// keystroke looked like it did nothing.
+func TestTheCursorSurvivesAnItemBecomingDone(t *testing.T) {
+	s := newStore(t)
+	for i, title := range []string{"alpha", "bravo", "charlie", "delta", "echo"} {
+		save(t, s, item{id: string(rune('a'+i)) + "aa", title: title, updated: ago(i + 1)})
+	}
+
+	m := newModel(t, s)
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 5})
+	m.cursor = indexOf(m, "alpha")
+
+	press(m, "x")
+
+	if !strings.Contains(m.View(), "❯") {
+		t.Errorf("the cursor is not drawn anywhere after the row moved:\n%s", m.View())
+	}
 }

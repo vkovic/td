@@ -522,10 +522,21 @@ func (m *Model) applyFilters() {
 	if e := m.Selected(); e != nil {
 		was = e.Item.ID
 	}
+	m.rebuild(was)
+}
+
+// rebuild recomputes the visible rows from the loaded listing and puts the
+// cursor back on the item named by anchor.
+//
+// The anchor is a parameter rather than read from the cursor here, because a
+// caller that is about to reorder the loaded listing has to name the item
+// before it moves. With no filter set the rows and the loaded listing are the
+// same slice, so sorting one reorders the other out from under the cursor.
+func (m *Model) rebuild(anchor string) {
 	m.shown = m.filters.apply(m.entries)
-	if was != "" {
+	if anchor != "" {
 		for i, e := range m.shown {
-			if e.Item.ID == was {
+			if e.Item.ID == anchor {
 				m.cursor = i
 				m.clampCursor()
 				return
