@@ -56,6 +56,19 @@ jobs:
       # running make lint cannot disagree about which one they ran. The build
       # cache setup-go keeps means it is compiled once, not once per run.
       - name: Lint
+        env:
+          # setup-go exports GOTOOLCHAIN=local, so a build cannot quietly use a
+          # Go other than the one it installed. Right for every other job and
+          # wrong for this one: make lint builds golangci-lint with go run, and
+          # the linter needs a newer Go to compile than td asks for in go.mod, so
+          # pinned it cannot be built at all. auto lets the go command fetch the
+          # toolchain the linter needs; go.mod still decides what td is compiled
+          # and vetted against.
+          #
+          # It has to be set on the step. setup-go writes GOTOOLCHAIN through
+          # GITHUB_ENV, which is applied after the job's own env and therefore
+          # beats it; only a step's env is applied later still.
+          GOTOOLCHAIN: auto
         run: make lint
 
   race:
