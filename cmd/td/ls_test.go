@@ -63,7 +63,18 @@ func TestLsShowsOpenItemsOnly(t *testing.T) {
 
 func TestLsOrdering(t *testing.T) {
 	h := newHarness(t)
-	base := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	// Anchored to the run's own clock, not a calendar date. td ls runs the real
+	// epilogue against the real time.Now, so a fixture pinned to a fixed day
+	// passes until that day falls further behind than done_ttl_days and then
+	// fails forever, with the sweep quietly archiving a row the order expects.
+	// Nine days back puts the later done_at six days old, inside the 7-day
+	// default TTL, and leaves every timestamp in the past.
+	//
+	// store.Now, not time.Now: Save pins the file's mtime to Updated while
+	// Marshal writes it to the second, so a clock carrying nanoseconds leaves
+	// mtime past updated — which is exactly what the epilogue's bump reads as a
+	// hand edit, and a bump would restamp all five items and destroy the order.
+	base := store.Now().AddDate(0, 0, -9)
 	day := func(n int) time.Time { return base.AddDate(0, 0, n) }
 
 	doneEarly, doneLate := day(3), day(5)
