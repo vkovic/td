@@ -88,7 +88,7 @@ func (a *app) add(title string, f addFlags) error {
 // readBody resolves the body from the flag, a file, or standard input.
 func readBody(body, bodyFile string, stdin io.Reader) (string, error) {
 	if bodyFile == "" {
-		return normalizeBodyText(body), nil
+		return task.NormalizeBody(body), nil
 	}
 	var (
 		b   []byte
@@ -102,17 +102,7 @@ func readBody(body, bodyFile string, stdin io.Reader) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("reading the item body: %w", err)
 	}
-	return normalizeBodyText(string(b)), nil
-}
-
-// normalizeBodyText trims a body to the shape an item file stores: no leading
-// or trailing blank lines, and one closing newline when there is anything.
-func normalizeBodyText(s string) string {
-	s = strings.Trim(s, "\n")
-	if strings.TrimSpace(s) == "" {
-		return ""
-	}
-	return s + "\n"
+	return task.NormalizeBody(string(b)), nil
 }
 
 // cleanTags trims and de-duplicates tags, keeping the order they were given.

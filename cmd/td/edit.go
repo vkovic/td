@@ -55,68 +55,60 @@ func (a *app) edit(prefixes []string, f editFlags, changed func(string) bool) er
 		return usagef("edit needs something to change: --title, --body, --body-file, --append, --tag, or --due")
 	}
 
+	// Resolved before the body is read, so that an id that does not exist is
+	// reported as one rather than pre-empted by an unreadable --body-file.
 	entries, err := a.tasks.ResolveAll(prefixes, a.scope.Scope, store.Active)
 	if err != nil {
 		return err
 	}
 
-	var body string
-	if changed("body") || changed("body-file") {
-		if body, err = readBody(f.body, f.bodyFile, a.stdin()); err != nil {
-			return err
-		}
+	ch, err := a.editChange(f, changed)
+	if err != nil {
+		return err
 	}
 
-	stamp := a.now()
-	for _, e := range entries {
-		it := e.Item
-		if changed("title") {
-			if f.title == "" {
-				return usagef("an item needs a title")
-			}
-			it.Title = f.title
-		}
-		if changed("body") || changed("body-file") {
-			it.Body = body
-		}
-		if changed("append") {
-			it.Body = appendParagraph(it.Body, f.appendTo)
-		}
-		if changed("tag") {
-			it.Tags = cleanTags(f.tags)
-		}
-		if changed("due") {
-			if f.due == "" {
-				it.Due = nil
-			} else {
-				due, err := store.ParseDate(f.due)
-				if err != nil {
-					return &usageError{err: err}
-				}
-				it.Due = &due
-			}
-		}
-		it.Updated = stamp
-		if _, err := a.store.Save(e.Ref.Scope, e.Ref.Area, it); err != nil {
-			return err
-		}
+	res, err := a.tasks.Edit(entries, ch)
+	if err != nil {
+		return err
 	}
-	return a.finish(task.Result{
-		Action:  "edit",
-		Entries: entries,
-		Message: task.CommitMessage("edit", entries),
-	})
+	return a.finish(res)
 }
 
-// appendParagraph adds text to a body, separated by a blank line so the result
-// is still readable markdown.
-func appendParagraph(body, text string) string {
-	text = normalizeBodyText(text)
-	if text == "" {
-		return body
+// editChange turns the flags that were actually typed into the change they
+// describe. Which flags were typed is cobra's to know and nobody else's, so the
+// question is answered here and the answer never leaves.
+func (a *app) editChange(f editFlags, changed func(string) bool) (task.Change, error) {
+	var ch task.Change
+	if changed("title") {
+		if f.title == "" {
+			return ch, usagef("%v", task.ErrEmptyTitle)
+		}
+		ch.Title = &f.title
 	}
-	if body == "" {
-		return text
+	if changed("body") || changed("body-file") {
+		body, err := readBody(f.body, f.bodyFile, a.stdin())
+		if err != nil {
+			return ch, err
+		}
+		ch.Body = &body
 	}
-	return body + "\n" + text
+	if changed("append") {
+		ch.Append = &f.appendTo
+	}
+	if changed("tag") {
+		tags := cleanTags(f.tags)
+		ch.Tags = &tags
+	}
+	if changed("due") {
+		if f.due == "" {
+			ch.Due = task.ClearDue()
+			return ch, nil
+		}
+		due, err := store.ParseDate(f.due)
+		if err != nil {
+			return ch, &usageError{err: err}
+		}
+		ch.Due = task.SetDue(due)
+	}
+	return ch, nil
 }
