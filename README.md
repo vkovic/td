@@ -198,6 +198,56 @@ not a quirk of this one. The setting may carry arguments — `editor = "code
 shell splits a command line, honouring quotes and backslashes. Nothing is
 expanded, so an editor setting cannot run a substitution.
 
+## How the code is laid out
+
+td has two surfaces and one place where an operation lives.
+
+```
+cmd/td             the cobra CLI            → task, epilogue, store, config, output, tui
+internal/tui       the Bubble Tea pane      → task, epilogue, store, config
+internal/task      what an operation does   → store
+internal/epilogue  the tail every change runs → store, config
+internal/store     items as files on disk   → gitx
+internal/gitx      the git commands td runs
+internal/config    config.toml and its TD_ overrides
+internal/output    the CLI's --json and plain-text printer
+internal/tdtest    fixtures, imported only from _test.go files
+```
+
+**A surface never reimplements an operation.** Adding, completing, removing,
+restoring and editing an item all live in `internal/task`, and `cmd/td` and
+`internal/tui` both call the same `task.Service`. A surface parses what the
+person gave it — flags for the CLI, a keystroke for the pane — builds a request,
+and renders what comes back. That is the whole of its job.
+
+This is worth stating because the alternative is what td used to do. Every
+operation was written twice, once in each surface, and the two copies were kept
+in agreement by whoever remembered to change both. `commitMessage` had two
+implementations whose comments each said they had to match the other's, and
+`plural` had three.
+
+So a new operation is a new file in `internal/task`, a method on `Service`
+returning a `task.Result`, and a caller in each surface that wants it. A new
+frontmatter field is a field on `store.Item` and a row in the `fields` table in
+`internal/store/item.go` — plus the fixture in `TestSkeletonCarriesEveryKeyTdOwns`,
+which fails loudly if you forget it.
+
+**The service does not run the epilogue.** It changes the store and hands back
+the entries and a commit message; the caller decides when the commit happens.
+`cmd/td` runs the epilogue synchronously because it is about to exit.
+`internal/tui` runs it as a `tea.Cmd`, off the event loop, because the epilogue
+takes a blocking flock on the store — one a CLI process may be holding — and
+waiting for it on the UI goroutine would freeze the pane. What the epilogue does
+is shared; when it runs is each surface's own business.
+
+**Time and identity come from the service, not from the package.** `task.Service`
+carries the clock that stamps `created`, `updated` and `done_at`, and the
+`store.IDGen` that mints ids. They are separate on purpose: stamps use
+`store.Now`, which truncates to the second, because `Save` pins a file's mtime
+to `Item.Updated` and a clock carrying nanoseconds leaves the two unequal —
+which is exactly what td reads back as an edit made outside td. Ids encode a
+millisecond, so they read an untruncated clock.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
