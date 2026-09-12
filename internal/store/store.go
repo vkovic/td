@@ -25,10 +25,10 @@ const ext = ".md"
 const untitled = "untitled"
 
 var (
-	// ErrNotFound is returned when no item matches an id or prefix.
+	// ErrNotFound is returned when no item matches an id, prefix or suffix.
 	ErrNotFound = errors.New("no item matches that id")
-	// ErrAmbiguous is returned when an id prefix matches more than one item.
-	ErrAmbiguous = errors.New("id prefix matches more than one item")
+	// ErrAmbiguous is returned when a partial id matches more than one item.
+	ErrAmbiguous = errors.New("id matches more than one item")
 )
 
 // Area is the part of a scope's directory an item file sits in. An item is
@@ -381,7 +381,7 @@ func (s *Store) Resolve(prefix string, scope Scope, areas ...Area) (Entry, error
 	if err != nil && len(entries) == 0 {
 		return Entry{}, err
 	}
-	return ResolvePrefix(prefix, entries)
+	return ResolveRef(prefix, entries)
 }
 
 // ResolveAll is Resolve across every scope, for the commands that take a bare
@@ -391,42 +391,64 @@ func (s *Store) ResolveAll(prefix string, areas ...Area) (Entry, error) {
 	if err != nil && len(entries) == 0 {
 		return Entry{}, err
 	}
-	return ResolvePrefix(prefix, entries)
+	return ResolveRef(prefix, entries)
 }
 
-// ResolvePrefix picks the single candidate whose id starts with prefix. An
-// exact id match wins outright, so a full id is never ambiguous against a
-// longer one. Otherwise a prefix matching several items is an error naming
-// them, distinct from matching none.
-func ResolvePrefix(prefix string, candidates []Entry) (Entry, error) {
-	if prefix == "" {
+// ResolveRef picks the single candidate whose id matches ref. Three forms are
+// tried in turn, and the first that matches anything decides: the whole id, a
+// leading prefix of it, then a trailing suffix. Each round is judged on its own
+// — a ref matching one item by prefix is that item even where several ids end
+// in it — so widening the match can never make a reference that already worked
+// ambiguous.
+//
+// The suffix round is what makes a ShortID typeable. It is the form the TUI
+// prints, and an id's leading characters are too nearly identical across a
+// store to reference by (see ShortID).
+//
+// A round matching several items is an error naming each id and its title, so
+// the reader has something to choose between; that is distinct from matching
+// none.
+func ResolveRef(ref string, candidates []Entry) (Entry, error) {
+	if ref == "" {
 		return Entry{}, fmt.Errorf("%w: empty id", ErrNotFound)
 	}
-	prefix = strings.ToLower(prefix)
+	ref = strings.ToLower(ref)
 
-	var matches []Entry
+	var prefixed, suffixed []Entry
 	for _, e := range candidates {
 		id := strings.ToLower(e.Item.ID)
-		if id == prefix {
+		switch {
+		case id == ref:
 			return e, nil
-		}
-		if strings.HasPrefix(id, prefix) {
-			matches = append(matches, e)
+		case strings.HasPrefix(id, ref):
+			prefixed = append(prefixed, e)
+		case strings.HasSuffix(id, ref):
+			suffixed = append(suffixed, e)
 		}
 	}
-	switch len(matches) {
-	case 0:
-		return Entry{}, fmt.Errorf("%w: %s", ErrNotFound, prefix)
-	case 1:
-		return matches[0], nil
-	default:
-		ids := make([]string, len(matches))
-		for i, m := range matches {
-			ids[i] = m.Item.ID
+	for _, matches := range [][]Entry{prefixed, suffixed} {
+		switch len(matches) {
+		case 0:
+			continue
+		case 1:
+			return matches[0], nil
+		default:
+			return Entry{}, fmt.Errorf("%w: %s matches %s", ErrAmbiguous, ref, describeMatches(matches))
 		}
-		sort.Strings(ids)
-		return Entry{}, fmt.Errorf("%w: %s matches %s", ErrAmbiguous, prefix, strings.Join(ids, ", "))
 	}
+	return Entry{}, fmt.Errorf("%w: %s", ErrNotFound, ref)
+}
+
+// describeMatches lists what an ambiguous ref hit, in id order, each id with the
+// title that tells it apart. A bare list of ids says only that the reader must
+// guess again; the titles are how they pick without opening all of them.
+func describeMatches(matches []Entry) string {
+	described := make([]string, len(matches))
+	for i, m := range matches {
+		described[i] = m.Item.ID + " (" + m.Item.Title + ")"
+	}
+	sort.Strings(described)
+	return strings.Join(described, ", ")
 }
 
 // pathsForID returns the files in dir holding the given id, matching on the

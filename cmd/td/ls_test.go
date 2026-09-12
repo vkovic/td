@@ -207,6 +207,43 @@ func TestShowFindsTrashedAndArchivedItems(t *testing.T) {
 	}
 }
 
+// TestCommandsTakeAnIDSuffix: the three characters the TUI's i key prints are
+// the tail of an id, and every command that takes an id has to accept that form
+// — otherwise the tag on screen is something a reader can see and not use.
+func TestCommandsTakeAnIDSuffix(t *testing.T) {
+	h := newHarness(t)
+	id := h.mutation("add", "Wire the epilogue").Items[0].ID
+	tag := store.ShortID(id)
+
+	out := h.mustRun("show", tag)
+	if !strings.Contains(out, id) {
+		t.Errorf("td show %s did not find %s:\n%s", tag, id, out)
+	}
+	if got := h.mutation("done", tag).Items[0].ID; got != id {
+		t.Errorf("td done %s acted on %s, want %s", tag, got, id)
+	}
+}
+
+// TestAmbiguousIDNamesEveryCandidateWithItsTitle: two items sharing the tail the
+// pane shows is the collision the reader has to resolve, and they resolve it by
+// title — a list of bare ids only tells them to guess again.
+func TestAmbiguousIDNamesEveryCandidateWithItsTitle(t *testing.T) {
+	h := newHarness(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	h.place(store.Global, "64qmbaaa", "Fix the backend", now, now, nil)
+	h.place(store.Global, "64s3caaa", "Ship the release", now, now, nil)
+
+	_, _, err := h.run("done", "aaa")
+	if err == nil {
+		t.Fatal("td done aaa = nil, want an ambiguous-id error")
+	}
+	for _, want := range []string{"64qmbaaa", "Fix the backend", "64s3caaa", "Ship the release"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error does not name %q:\n%v", want, err)
+		}
+	}
+}
+
 func TestShowUnknownIDFails(t *testing.T) {
 	h := newHarness(t)
 	if _, _, err := h.run("show", "nosuchid"); err == nil {

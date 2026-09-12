@@ -65,6 +65,25 @@ func encodeID(v uint64) string {
 	return string(buf)
 }
 
+// shortIDLen is how many characters of an id a short reference carries: the
+// tag the TUI prints beside a title and the form a reader types back.
+const shortIDLen = 3
+
+// ShortID is the tail of an id, which is the part of it that tells two items
+// apart. An id encodes a millisecond, so its leading characters are the high
+// bits of the clock: every item created inside the same 9-hour window shares
+// its first three, and a store's whole listing can share them. The last three
+// are the low bits, which turn over every millisecond.
+//
+// An id shorter than shortIDLen — there are none NewID makes, but a hand-edited
+// file can carry one — is returned whole rather than padded.
+func ShortID(id string) string {
+	if len(id) <= shortIDLen {
+		return id
+	}
+	return id[len(id)-shortIDLen:]
+}
+
 // slugMaxLen caps a slug so a filename stays comfortably inside every
 // filesystem's per-component limit once the id and .md suffix are added.
 const slugMaxLen = 60

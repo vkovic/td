@@ -126,6 +126,12 @@ type Model struct {
 
 	// showHelp is whether the key overlay is covering the list.
 	showHelp bool
+
+	// showIDs is whether every row carries its item's ShortID. It is off by
+	// default: the tag is there to be read back to a program — `td done sxx`,
+	// or a message to Claude Code naming one item of a dozen — and costs four
+	// columns of title the rest of the time.
+	showIDs bool
 }
 
 // Options are what New needs. Store, Config and Scope come from the same

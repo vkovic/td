@@ -20,6 +20,7 @@ type styles struct {
 	due      lipgloss.Style
 	overdue  lipgloss.Style
 	scope    lipgloss.Style
+	id       lipgloss.Style
 	updated  lipgloss.Style
 	cursor   lipgloss.Style
 	rule     lipgloss.Style
@@ -43,6 +44,7 @@ func newStyles(r *lipgloss.Renderer) styles {
 		due:      r.NewStyle().Foreground(lipgloss.Color("4")),
 		overdue:  r.NewStyle().Foreground(lipgloss.Color("1")).Bold(true),
 		scope:    r.NewStyle().Foreground(lipgloss.Color("2")),
+		id:       r.NewStyle().Foreground(lipgloss.Color("3")),
 		updated:  r.NewStyle().Foreground(dim),
 		cursor:   r.NewStyle().Foreground(lipgloss.Color("6")).Bold(true),
 		rule:     r.NewStyle().Foreground(dim),
@@ -356,6 +358,13 @@ func (m *Model) row(e store.Entry, selected bool) string {
 	}
 
 	before := []string{marker, box}
+	// The id goes ahead of the title, the one place it reads as a label on the
+	// row rather than as another trailing field competing with the due date. It
+	// is not a droppable cell: a pane too narrow for it is a pane where the tag
+	// is the only way left to say which item a stub of a title belongs to.
+	if m.showIDs {
+		before = append(before, m.styles.id.Render(store.ShortID(e.Item.ID)))
+	}
 	// Only the merged view needs the label: in a single-scope view every row
 	// would carry the same one, which is what the status line already says.
 	// It sits before the title, where td ls --all puts its SCOPE column.

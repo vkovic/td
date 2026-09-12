@@ -135,3 +135,34 @@ func TestSlugTruncatesOnRuneBoundary(t *testing.T) {
 		t.Errorf("Slug produced invalid UTF-8: %q", got)
 	}
 }
+
+func TestShortID(t *testing.T) {
+	tests := []struct {
+		id   string
+		want string
+	}{
+		{"64qmbs3r", "s3r"},
+		{"64qmnsxx", "sxx"},
+		{"ab", "ab"},
+		{"", ""},
+	}
+	for _, tc := range tests {
+		if got := ShortID(tc.id); got != tc.want {
+			t.Errorf("ShortID(%q) = %q, want %q", tc.id, got, tc.want)
+		}
+	}
+}
+
+func TestShortIDTellsApartIDsFromTheSameSecond(t *testing.T) {
+	// Ids minted back to back share every leading character: the tail is the
+	// whole of what distinguishes them, which is why the tag is the tail.
+	now := time.Date(2026, 9, 12, 10, 0, 0, 0, time.UTC)
+	seen := map[string]bool{}
+	for range 20 {
+		short := ShortID(newIDAt(now))
+		if seen[short] {
+			t.Fatalf("ShortID repeated %q within one millisecond", short)
+		}
+		seen[short] = true
+	}
+}

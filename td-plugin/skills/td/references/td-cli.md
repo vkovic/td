@@ -109,9 +109,18 @@ take no flags of their own.
 
 ## Ids
 
-An id is 8 lowercase base32 characters. **Any unique prefix works** wherever an
-id is expected, so `td done 64n9gq` is fine when only one item starts that way.
-Every command that takes an id takes one or more.
+An id is 8 lowercase base32 characters. **Any unique prefix or suffix works**
+wherever an id is expected, so `td done 64n9gq` is fine when only one item starts
+that way and `td done gq7` when only one ends that way. Every command that takes
+an id takes one or more.
+
+The suffix form is the one the user is likely to quote at you. The TUI's `i` key
+tags each row with the **last three** characters of its id — the leading ones are
+the high bits of a millisecond clock, so a whole listing can share them — and
+that three-character tag is what they will paste. Pass it through as given.
+
+Resolution tries the whole id, then prefixes, then suffixes, and stops at the
+first form that matches anything.
 
 ## The epilogue
 
@@ -209,7 +218,7 @@ after an `rm`.
 | 1 | The store or git could not do what was asked |
 | 2 | The command line was wrong: unknown flag, missing argument, `-g` with `-p` |
 | 3 | No item matched the id given |
-| 4 | An id prefix matched more than one item — the message lists the candidates |
+| 4 | A partial id matched more than one item — the message lists each candidate id with its title |
 
 Exit 4 is recoverable without asking the user: the message names every matching
 id, so a longer prefix or the full id can be retried straight away.

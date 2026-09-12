@@ -60,6 +60,8 @@ func keyMap() []binding {
 			run: func(m *Model) tea.Cmd { m.cycleTag(); return nil }},
 		{keys: []string{"g"}, help: "pick the list to show: global, all, or a project", short: "scope", rank: 9,
 			run: (*Model).openPicker},
+		{keys: []string{"i"}, help: "show or hide each item's id", short: "ids", rank: 12,
+			run: func(m *Model) tea.Cmd { m.showIDs = !m.showIDs; return nil }},
 
 		{keys: []string{"esc"}, help: "clear the filters",
 			run: func(m *Model) tea.Cmd { m.clearFilters(); return nil }},

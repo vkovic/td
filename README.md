@@ -101,10 +101,45 @@ its own tail.
 | `/`        | filter by title                                        |
 | `t`        | cycle the tag filter                                   |
 | `g`        | pick the list to show: global, all, or a project       |
+| `i`        | show or hide each item's id                            |
 | `esc`      | clear the filters                                      |
 | `r`        | record hand edits, sweep, commit and push now          |
 | `?`        | show this help                                         |
 | `q`        | quit                                                   |
+
+### Referring to an item by its id
+
+`i` puts each item's id on its row, ahead of the title, and `i` again takes it
+away. The tag is the **last** three characters of the eight-character id, not the
+first: an id encodes the millisecond it was minted, so its leading characters are
+the high bits of that clock and every item created inside the same nine-hour
+window shares them — a whole store's listing can read `64q`. The tail turns over
+every millisecond, so it is the part that tells two items apart.
+
+```
+❯ [ ] s3r fuzzy search                              #cli  3d
+  [ ] sxx ids for items for quick reference                5d
+```
+
+Those three characters are what you type back. Every command that takes an id —
+`td show`, `td edit`, `td done`, `td rm` — accepts the whole id, any unique
+leading prefix of it, or any unique trailing suffix, which is what makes the tag
+on screen a thing you can paste into a `Bash` call or a message to Claude Code
+without reading out all eight characters.
+
+Three characters can still land on two items, and then `td done sxx` writes
+nothing and exits 4, naming every candidate with its title so there is something
+to choose between:
+
+```
+$ td done aaa
+td: id matches more than one item: aaa matches 64qmbaaa (fix the backend), 64s3caaa (ship the release)
+```
+
+Pick the one you meant and run it again with more of its id. Resolution is judged
+one form at a time — the whole id first, then prefixes, then suffixes — so a
+reference that already worked cannot be made ambiguous by an id that merely ends
+in it.
 
 `$EDITOR` is the only editing surface. There is no preview pane and no in-place
 field editing: `e` opens the item's markdown file, and whatever you leave behind

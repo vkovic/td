@@ -321,7 +321,7 @@ func TestListMissingDirectoryIsEmpty(t *testing.T) {
 	}
 }
 
-func TestResolvePrefix(t *testing.T) {
+func TestResolveRef(t *testing.T) {
 	entries := []Entry{
 		{Item: newItem("7k3m9q2x", "One")},
 		{Item: newItem("7k3maaaa", "Two")},
@@ -334,6 +334,8 @@ func TestResolvePrefix(t *testing.T) {
 		wantErr error
 	}{
 		{"unique prefix", "01", "01hx2b9f", nil},
+		{"unique suffix", "9q2x", "7k3m9q2x", nil},
+		{"short id suffix", "aaa", "7k3maaaa", nil},
 		{"full id", "7k3m9q2x", "7k3m9q2x", nil},
 		{"uppercase input", "01HX", "01hx2b9f", nil},
 		{"ambiguous", "7k3m", "", ErrAmbiguous},
@@ -342,35 +344,71 @@ func TestResolvePrefix(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := ResolvePrefix(tc.prefix, entries)
+			got, err := ResolveRef(tc.prefix, entries)
 			if tc.wantErr != nil {
 				if !errors.Is(err, tc.wantErr) {
-					t.Fatalf("ResolvePrefix(%q) error = %v, want %v", tc.prefix, err, tc.wantErr)
+					t.Fatalf("ResolveRef(%q) error = %v, want %v", tc.prefix, err, tc.wantErr)
 				}
 				return
 			}
 			if err != nil {
-				t.Fatalf("ResolvePrefix(%q): %v", tc.prefix, err)
+				t.Fatalf("ResolveRef(%q): %v", tc.prefix, err)
 			}
 			if got.Item.ID != tc.wantID {
-				t.Errorf("ResolvePrefix(%q) = %q, want %q", tc.prefix, got.Item.ID, tc.wantID)
+				t.Errorf("ResolveRef(%q) = %q, want %q", tc.prefix, got.Item.ID, tc.wantID)
 			}
 		})
 	}
 }
 
-func TestResolvePrefixExactMatchBeatsLongerID(t *testing.T) {
+func TestResolveRefExactMatchBeatsLongerID(t *testing.T) {
 	// A full id must resolve even when another id extends it.
 	entries := []Entry{
 		{Item: newItem("7k3m9q2x", "Exact")},
 		{Item: newItem("7k3m9q2xy", "Longer")},
 	}
-	got, err := ResolvePrefix("7k3m9q2x", entries)
+	got, err := ResolveRef("7k3m9q2x", entries)
 	if err != nil {
-		t.Fatalf("ResolvePrefix: %v", err)
+		t.Fatalf("ResolveRef: %v", err)
 	}
 	if got.Item.Title != "Exact" {
 		t.Errorf("resolved to %q, want the exact match", got.Item.Title)
+	}
+}
+
+func TestResolveRefPrefixBeatsSuffix(t *testing.T) {
+	// "aaa" is a suffix of two ids and the prefix of one. The prefix round
+	// decides, so widening ResolveRef to suffixes cannot turn a reference that
+	// already resolved into an ambiguous one.
+	entries := []Entry{
+		{Item: newItem("aaam9q2x", "Prefixed")},
+		{Item: newItem("7k3mbaaa", "Suffixed")},
+		{Item: newItem("7k3mcaaa", "Also suffixed")},
+	}
+	got, err := ResolveRef("aaa", entries)
+	if err != nil {
+		t.Fatalf("ResolveRef: %v", err)
+	}
+	if got.Item.Title != "Prefixed" {
+		t.Errorf("resolved to %q, want the prefix match", got.Item.Title)
+	}
+}
+
+func TestResolveRefAmbiguousSuffixNamesCandidates(t *testing.T) {
+	// Two ShortIDs alike is the collision the TUI's id tag can show, and the
+	// error is what the reader chooses from.
+	entries := []Entry{
+		{Item: newItem("7k3mbaaa", "First")},
+		{Item: newItem("7k3mcaaa", "Second")},
+	}
+	_, err := ResolveRef("aaa", entries)
+	if !errors.Is(err, ErrAmbiguous) {
+		t.Fatalf("ResolveRef error = %v, want ErrAmbiguous", err)
+	}
+	for _, want := range []string{"7k3mbaaa", "First", "7k3mcaaa", "Second"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %v does not name %s", err, want)
+		}
 	}
 }
 
@@ -379,11 +417,11 @@ func TestResolveAmbiguousErrorNamesCandidates(t *testing.T) {
 		{Item: newItem("7k3m9q2x", "One")},
 		{Item: newItem("7k3maaaa", "Two")},
 	}
-	_, err := ResolvePrefix("7k3m", entries)
+	_, err := ResolveRef("7k3m", entries)
 	if err == nil {
 		t.Fatal("want an error")
 	}
-	for _, want := range []string{"7k3m9q2x", "7k3maaaa"} {
+	for _, want := range []string{"7k3m9q2x", "One", "7k3maaaa", "Two"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %v does not name %s", err, want)
 		}

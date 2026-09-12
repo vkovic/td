@@ -26,7 +26,7 @@ Run every command from the current directory as-is: the `.td` marker decides pro
 
 1. `td ls --json`, adding `--done` when the item may be closed and `--all` when it may sit in another scope.
 2. Match the user's words against `title` in `items`. One match → use its `id`. Several → ask which, listing them with ids. None → say so and stop.
-3. Exit 4 means the id prefix was ambiguous: the message lists the candidates, retry with the full id.
+3. Exit 4 means the partial id matched several items: the message lists each candidate id with its title. Ask the user which one they meant rather than guessing, then retry with the full id. A three-character id the user read off the TUI (`i` tags each row with the last three characters of its id) is a suffix, and resolves as given — only a collision brings you here.
 
 ## 3. Shape an add
 
