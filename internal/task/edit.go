@@ -58,16 +58,21 @@ func (s *Service) Edit(entries []store.Entry, ch Change) (Result, error) {
 		return Result{}, ErrNothingToChange
 	}
 
+	// Checked before the loop, not inside it: the answer is the same for every
+	// entry, and a guard that rejects on the second item has already written
+	// the first.
+	//
+	// Not TrimSpace, unlike Add: a title of spaces is refused on the way in and
+	// tolerated on the way through, which is how td has always behaved and is
+	// not this change's business to settle.
+	if ch.Title != nil && *ch.Title == "" {
+		return Result{}, ErrEmptyTitle
+	}
+
 	stamp := s.now()
 	for _, e := range entries {
 		it := e.Item
 		if ch.Title != nil {
-			// Not TrimSpace, unlike Add: a title of spaces is refused on the
-			// way in and tolerated on the way through, which is how td has
-			// always behaved and is not this change's business to settle.
-			if *ch.Title == "" {
-				return Result{}, ErrEmptyTitle
-			}
 			it.Title = *ch.Title
 		}
 		if ch.Body != nil {

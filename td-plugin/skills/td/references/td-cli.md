@@ -160,7 +160,7 @@ the scope name, `global`, or `all`.
 **Mutating commands** (`add`, `edit`, `done`, `undo`, `rm`, `restore`) →
 `{"action": …, "items": [item…], "epilogue": {…}}`. `action` is the command's
 name, except that `td rm` reports `"remove"` — and that string is load-bearing
-rather than cosmetic: `cmd/td/mutate.go:40` tests `action != "remove"` to decide
+rather than cosmetic: `cmd/td/mutate.go:24` tests `action != "remove"` to decide
 whether item bodies are included, which is why `td rm` is the one mutating
 command whose items carry no `body`.
 

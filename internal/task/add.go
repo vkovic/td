@@ -47,7 +47,7 @@ func (s *Service) Add(req AddRequest) (Result, error) {
 	// compares a file's mtime against.
 	created := s.now()
 	it := &store.Item{
-		ID:                s.ids.Next(),
+		ID:                s.newID(),
 		Title:             title,
 		Tags:              req.Tags,
 		Due:               req.Due,

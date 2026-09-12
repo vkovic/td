@@ -22,9 +22,10 @@ go build -o ~/.local/bin/td ./cmd/td
 
 ## Requirements
 
-- macOS or Linux. Windows is not supported: the store lock `td` holds for the
-  duration of every command has no implementation there, and `td` refuses to
-  run rather than let two processes write the store at once.
+- macOS or Linux. Windows is not supported: the store lock that serialises the
+  commit-and-push tail every command runs is a `flock`, which has no
+  implementation there, so anything that changes the store fails when it
+  reaches that tail.
 - `git` on your `PATH`. The store is a git repository and every command commits
   its own change.
 - Go 1.24 or later, to install it.

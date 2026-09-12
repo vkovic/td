@@ -41,7 +41,7 @@ func split(capacity, open, done int, cursorInDone bool) (openHeight, doneHeight 
 	if cursorInDone && done > 0 {
 		doneHeight, left = 1, left-1
 	}
-	if open > 0 && openHeight == 0 && left > 0 {
+	if open > 0 && left > 0 {
 		openHeight, left = 1, left-1
 	}
 	if ruled && left > 0 {

@@ -35,19 +35,28 @@ type Service struct {
 	// next bump then restamps everything.
 	now func() time.Time
 
-	// ids mints item ids. Separate from now on purpose: an id encodes a
-	// millisecond, so it reads a clock that has not been truncated to the
-	// second. See store.NewIDGen, which says why at length.
-	ids *store.IDGen
+	// newID mints item ids. store.NewID by default, and deliberately not a
+	// generator of this Service's own: a generator holds the last id it handed
+	// out so that ids minted inside one millisecond still differ, and two
+	// generators do not share that counter. Running the pane builds two
+	// Services in one process — cmd/td makes one in setup and internal/tui
+	// makes another — so a Service minting from its own counter would be two
+	// items created in the same millisecond away from issuing the same id
+	// twice.
+	//
+	// Separate from now on purpose: an id encodes a millisecond, so it reads a
+	// clock that has not been truncated to the second. See store.NewIDGen,
+	// which says why at length.
+	newID func() string
 }
 
 // Option adjusts a Service as it is built.
 type Option func(*Service)
 
-// WithIDGen replaces the id source, so a test can pin the clock behind it and
-// read back an exact sequence.
+// WithIDGen replaces the id source, so a test can pin the clock behind a
+// generator of its own and read back an exact sequence.
 func WithIDGen(g *store.IDGen) Option {
-	return func(s *Service) { s.ids = g }
+	return func(s *Service) { s.newID = g.Next }
 }
 
 // New returns a Service over an already open store. A nil clock means store.Now.
@@ -55,7 +64,7 @@ func New(st *store.Store, now func() time.Time, opts ...Option) *Service {
 	if now == nil {
 		now = store.Now
 	}
-	s := &Service{store: st, now: now, ids: store.NewIDGen(nil)}
+	s := &Service{store: st, now: now, newID: store.NewID}
 	for _, opt := range opts {
 		opt(s)
 	}

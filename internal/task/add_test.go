@@ -144,3 +144,34 @@ func TestCommitMessageCountsWhatItCannotName(t *testing.T) {
 		}
 	}
 }
+
+// TestTwoServicesInOneProcessDoNotIssueTheSameID: running the pane builds two
+// Services — cmd/td makes one in setup, internal/tui makes another — and an id
+// encodes the millisecond it was minted. A Service minting from a generator of
+// its own would have its own counter, and two counters cannot keep two items
+// created inside one millisecond apart. They mint from the process-wide
+// generator, which is the whole reason that generator exists.
+//
+// The ids are drawn directly rather than through Add, which writes a file and
+// so spaces its calls out over more than a millisecond each — enough to hide
+// the collision this is here to catch.
+func TestTwoServicesInOneProcessDoNotIssueTheSameID(t *testing.T) {
+	cli, tui := New(nil, nil), New(nil, nil)
+
+	seen := make(map[string]bool)
+	last := ""
+	for i := range 200 {
+		svc := cli
+		if i%2 == 1 {
+			svc = tui
+		}
+		id := svc.newID()
+		if seen[id] {
+			t.Fatalf("the two services issued %q twice, at call %d", id, i)
+		}
+		if id <= last {
+			t.Fatalf("id %q at call %d does not follow %q", id, i, last)
+		}
+		seen[id], last = true, id
+	}
+}
