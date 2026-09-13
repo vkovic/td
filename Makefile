@@ -10,18 +10,39 @@ GOLANGCI        ?= go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 
 BIN := bin/td
 
+# PREFIX is where `make install` puts td. It defaults to ~/.local/bin rather
+# than the $(go env GOPATH)/bin that `go install` obeys, because a checkout
+# build is the whole point of this target and GOPATH/bin is often not even on
+# a PATH.
+PREFIX ?= $(HOME)/.local/bin
+
+# VERSION is what the built binary reports as `td --version`. Without it a
+# checkout build names itself by its commit, so an installed binary cannot say
+# which release it is. git describe answers with the tag when HEAD carries one,
+# falls back to the commit when it does not, and to dev outside a checkout —
+# the empty string would be worse than any of them, because main.version treats
+# anything other than "dev" as authoritative and would print nothing at all.
+VERSION ?= $(shell git describe --tags --dirty --always 2>/dev/null || echo dev)
+LDFLAGS := -ldflags "-X main.version=$(VERSION)"
+
 .PHONY: all build install test race cover lint fmt fmt-check tidy-check clean
 
 ## all: what CI runs, and what to run before pushing.
 all: fmt-check lint test
 
-## build: put a td in ./bin.
+## build: put a td in ./bin, stamped with the version.
 build:
-	go build -o $(BIN) ./cmd/td
+	go build $(LDFLAGS) -o $(BIN) ./cmd/td
 
-## install: put a td on your PATH, in $(go env GOPATH)/bin.
+## install: put a td in $(PREFIX), stamped with the version, and say what
+## landed there. It goes through go build rather than cp for a reason: go build
+## writes a temp file and renames it into place, while copying over a binary
+## where it lies invalidates the code signature macOS cached against that file,
+## and every later run is killed on sight with no output at all.
 install:
-	go install ./cmd/td
+	@mkdir -p $(PREFIX)
+	go build $(LDFLAGS) -o $(PREFIX)/td ./cmd/td
+	@$(PREFIX)/td --version
 
 ## test: the whole suite.
 test:

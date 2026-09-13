@@ -14,11 +14,15 @@ go install github.com/vkovic/td/cmd/td@latest
 ```
 
 That puts `td` in `$(go env GOPATH)/bin`, which has to be on your `PATH`. From
-a checkout, build it wherever you keep your own binaries instead:
+a checkout, install it wherever you keep your own binaries instead:
 
 ```
-go build -o ~/.local/bin/td ./cmd/td
+make install
 ```
+
+That builds `td` into `~/.local/bin`, stamps it with the version, and prints
+what landed there. Point `PREFIX` somewhere else if your binaries live
+somewhere else: `make install PREFIX=/usr/local/bin`.
 
 ## Requirements
 
@@ -37,9 +41,20 @@ go build ./cmd/td
 ./td --version
 ```
 
+That is the check that the tree still compiles. It leaves a `td` in the repo
+root and does not touch the one on your `PATH`, so run `make install` when you
+want the change in the tool you actually use.
+
 `td --version` names the build it came from: the tag for a binary installed
-with `go install`, and the commit for one built from a checkout — with
-`-dirty` when the tree had uncommitted changes.
+with `go install` or `make install`, and the commit for one built by a bare
+`go build` from a checkout — with `-dirty` when the tree had uncommitted
+changes.
+
+Do not `cp` a new binary over the one already on your `PATH`. macOS caches a
+binary's code signature against the file, so overwriting it where it lies gets
+every later run killed on sight, with no output to say why. `go build -o` and
+`make install` write a temp file and rename it into place, which is why they
+are safe to run over a binary you are using.
 
 ## Install the `/td` skill
 
