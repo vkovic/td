@@ -43,7 +43,7 @@ func TestPinTogglesAndHeadsTheSection(t *testing.T) {
 	}
 }
 
-// TestAPinnedItemMarkedDoneHeadsTheDoneSection: the pin survives x, and ranks
+// TestAPinnedItemMarkedDoneHeadsTheDoneSection: the pin survives space, and ranks
 // the item first below the rule — even over a done item completed after it.
 func TestAPinnedItemMarkedDoneHeadsTheDoneSection(t *testing.T) {
 	s := newStore(t)
@@ -54,11 +54,11 @@ func TestAPinnedItemMarkedDoneHeadsTheDoneSection(t *testing.T) {
 
 	m := newModel(t, s)
 	m.cursor = indexOf(m, "pinned open")
-	drain(t, m, press(m, "x"))
+	drain(t, m, press(m, " "))
 
 	e := findTitle(t, m, "pinned open")
 	if !e.Item.Done() || !e.Item.Pinned {
-		t.Fatalf("x left the item done=%v pinned=%v, want both", e.Item.Done(), e.Item.Pinned)
+		t.Fatalf("space left the item done=%v pinned=%v, want both", e.Item.Done(), e.Item.Pinned)
 	}
 	if got := strings.Join(titles(m), ","); got != "other open,pinned open,done later" {
 		t.Errorf("the listing is %s, want the pinned item heading the done section", got)

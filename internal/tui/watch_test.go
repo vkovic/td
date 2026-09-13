@@ -228,7 +228,7 @@ func TestTheTUIsOwnWriteDoesNotFlash(t *testing.T) {
 	m := newModel(t, s, watching)
 	t.Cleanup(func() { m.Close() })
 
-	drain(t, m, press(m, "x"))
+	drain(t, m, press(m, " "))
 	settle(t, m, time.Second)
 
 	if strings.Contains(plain(m.View()), externalFlash) {

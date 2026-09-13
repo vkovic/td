@@ -32,7 +32,22 @@ type binding struct {
 }
 
 // name is how the help refers to this binding: its keys, slash separated.
-func (b binding) name() string { return strings.Join(b.keys, "/") }
+func (b binding) name() string {
+	labels := make([]string, len(b.keys))
+	for i, key := range b.keys {
+		labels[i] = keyLabel(key)
+	}
+	return strings.Join(labels, "/")
+}
+
+// keyLabel is how the help writes a key. Bubble Tea names space " ", which
+// would print as a gap, so it is shown as ␣ the way the README shows it.
+func keyLabel(key string) string {
+	if key == " " {
+		return "␣"
+	}
+	return key
+}
 
 // keyMap is every key the TUI answers to.
 //
@@ -49,25 +64,25 @@ func keyMap() []binding {
 			run: (*Model).startAdd},
 		{keys: []string{"e", "enter"}, help: "open the selected item in $EDITOR", short: "edit", rank: 4,
 			run: func(m *Model) tea.Cmd { return m.gate(m.editSelected) }},
-		{keys: []string{"x"}, help: "mark the selected item done, or reopen it", short: "done", rank: 5,
+		{keys: []string{" "}, help: "mark the selected item done, or reopen it", short: "done", rank: 5,
 			run: func(m *Model) tea.Cmd { return m.gate(m.toggleDone) }},
 		// No short: the legend has no room to spare, and the overlay lists it.
 		{keys: []string{"p"}, help: "pin the selected item to the top, or unpin it",
 			run: func(m *Model) tea.Cmd { return m.gate(m.togglePin) }},
-		{keys: []string{"d"}, help: "move the selected item to the trash", short: "delete", rank: 8,
+		{keys: []string{"x"}, help: "move the selected item to the trash", short: "delete", rank: 8,
 			run: func(m *Model) tea.Cmd { return m.gate(m.removeItem) }},
 
 		{keys: []string{"/"}, help: "filter by title", short: "filter", rank: 7,
 			run: (*Model).startFilter},
 		{keys: []string{"t"}, help: "cycle the tag filter", short: "tag", rank: 10,
 			run: func(m *Model) tea.Cmd { m.cycleTag(); return nil }},
-		{keys: []string{"g"}, help: "pick the list to show: global, all, or a project", short: "scope", rank: 9,
-			run: (*Model).openPicker},
+		// One key, two jobs, chosen by whether anything is filtered: a key bound
+		// twice would run whichever the table listed first.
+		{keys: []string{"esc"}, help: "clear the filters, or with none set, pick the list to show: global, all, or a project",
+			short: "scope", rank: 9,
+			run: (*Model).escape},
 		{keys: []string{"i"}, help: "show or hide each item's id", short: "ids", rank: 12,
 			run: func(m *Model) tea.Cmd { m.showIDs = !m.showIDs; return nil }},
-
-		{keys: []string{"esc"}, help: "clear the filters",
-			run: func(m *Model) tea.Cmd { m.clearFilters(); return nil }},
 
 		{keys: []string{"r"}, help: "record hand edits, sweep, commit and push now", short: "refresh", rank: 11,
 			run: func(m *Model) tea.Cmd { return m.gate(m.refresh) }},
@@ -112,7 +127,7 @@ func legend(width int) string {
 
 	parts := make([]string, 0, len(keep))
 	for _, b := range keep {
-		parts = append(parts, b.keys[0]+" "+b.short)
+		parts = append(parts, keyLabel(b.keys[0])+" "+b.short)
 	}
 	return strings.Join(parts, legendSeparator)
 }
@@ -130,7 +145,7 @@ func legendWidth(bindings []binding) int {
 	}
 	total := ansi.StringWidth(legendSeparator) * (len(bindings) - 1)
 	for _, b := range bindings {
-		total += ansi.StringWidth(b.keys[0]) + 1 + ansi.StringWidth(b.short)
+		total += ansi.StringWidth(keyLabel(b.keys[0])) + 1 + ansi.StringWidth(b.short)
 	}
 	return total
 }
@@ -162,7 +177,7 @@ func (m *Model) helpLines() []string {
 	width := 0
 	table := keyMap()
 	for _, k := range table {
-		if n := len(k.name()); n > width {
+		if n := ansi.StringWidth(k.name()); n > width {
 			width = n
 		}
 	}

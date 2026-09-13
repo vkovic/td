@@ -36,7 +36,7 @@ func inProject(name string) func(*Options) {
 // walks — so it is asserted as a sequence rather than as a set.
 func TestPickerListsEveryList(t *testing.T) {
 	m := newModel(t, spread(t), inProject("td"))
-	press(m, "g")
+	press(m, "esc")
 
 	want := "global, all scopes, acme, td, zeta"
 	if got := strings.Join(pickerLabels(m), ", "); got != want {
@@ -57,7 +57,7 @@ func TestPickerListsAProjectWithNothingOpen(t *testing.T) {
 	}
 
 	m := newModel(t, s)
-	press(m, "g")
+	press(m, "esc")
 	if got := strings.Join(pickerLabels(m), ", "); !strings.Contains(got, "hollow") {
 		t.Errorf("the picker lists %s, want the project with nothing open among them", got)
 	}
@@ -69,7 +69,7 @@ func TestPickerListsAProjectWithNothingOpen(t *testing.T) {
 // else's list.
 func TestPickerListsTheScopeOnScreen(t *testing.T) {
 	m := newModel(t, spread(t), inProject("brand-new"))
-	press(m, "g")
+	press(m, "esc")
 
 	want := "global, all scopes, acme, brand-new, td, zeta"
 	if got := strings.Join(pickerLabels(m), ", "); got != want {
@@ -89,7 +89,7 @@ func TestPickerOpensOnTheListOnScreen(t *testing.T) {
 		if showing != "td" {
 			pick(t, m, showing)
 		}
-		press(m, "g")
+		press(m, "esc")
 		if got := m.picker.rows[m.picker.cursor].label(); got != showing {
 			t.Errorf("showing %s, the picker opened its cursor on %q", showing, got)
 		}
@@ -110,7 +110,7 @@ func TestPickerOpensOnGlobalWithNoMarker(t *testing.T) {
 		t.Fatalf("with no marker the pane opened on %q, want the global list", got)
 	}
 
-	press(m, "g")
+	press(m, "esc")
 	if got := m.picker.cursor; got != 0 {
 		t.Errorf("the picker opened its cursor on row %d, want the first", got)
 	}
@@ -155,7 +155,7 @@ func TestPickerEscLeavesTheListAlone(t *testing.T) {
 	press(m, "j") // onto the second td item
 	was, wasCursor := m.scopeLabel(), m.Cursor()
 
-	press(m, "g")
+	press(m, "esc")
 	press(m, "j")
 	press(m, "j")
 	press(m, "esc")
@@ -171,11 +171,11 @@ func TestPickerEscLeavesTheListAlone(t *testing.T) {
 	}
 }
 
-// TestPickerEscDoesNotClearTheFilters: esc means cancel inside the picker. The
-// same key clears the filters on the list underneath, and a cancelled pick
-// that emptied the filter would be the picker reaching through its own
-// overlay.
-func TestPickerEscDoesNotClearTheFilters(t *testing.T) {
+// TestEscClearsTheFiltersBeforeOpeningThePicker: esc is one key with two jobs.
+// On a narrowed list it gives the rows back; only on the whole list does it
+// open the picker. Esc inside the picker cancels, and leaves the list exactly
+// as the second esc found it.
+func TestEscClearsTheFiltersBeforeOpeningThePicker(t *testing.T) {
 	m := newModel(t, spread(t), inProject("td"))
 	typeInto(m, "/", "one")
 	press(m, "enter")
@@ -183,33 +183,52 @@ func TestPickerEscDoesNotClearTheFilters(t *testing.T) {
 		t.Fatalf("the filter did not take: %q", m.filters.title)
 	}
 
-	press(m, "g")
 	press(m, "esc")
-
-	if m.filters.title != "one" {
-		t.Errorf("esc in the picker cleared the filter: %q", m.filters.title)
+	if m.picker.open {
+		t.Error("esc opened the picker while a filter was set")
 	}
-	// And the key still works on the list itself.
+	if !m.filters.none() {
+		t.Errorf("esc left the filters as %+v", m.filters)
+	}
+
+	press(m, "j")
+	was, wasCursor, wasTitles := m.scopeLabel(), m.Cursor(), strings.Join(titles(m), ",")
+
 	press(m, "esc")
-	if m.filters.title != "" {
-		t.Errorf("esc on the list left the filter as %q", m.filters.title)
+	if !m.picker.open {
+		t.Fatal("esc on an unfiltered list did not open the picker")
+	}
+
+	press(m, "esc")
+	if m.picker.open {
+		t.Error("esc left the picker up")
+	}
+	if got := m.scopeLabel(); got != was {
+		t.Errorf("a cancelled pick moved the pane to %q, want it still on %q", got, was)
+	}
+	if got := m.Cursor(); got != wasCursor {
+		t.Errorf("a cancelled pick moved the list cursor to %d, want it still on %d", got, wasCursor)
+	}
+	if got := strings.Join(titles(m), ","); got != wasTitles {
+		t.Errorf("a cancelled pick left the list showing %s, want %s", got, wasTitles)
 	}
 }
 
-// TestFiltersCarryOverAPick: a pick is a reload, and the filters survive every
-// other reload today. They narrow the new list the way they narrowed the old.
-func TestFiltersCarryOverAPick(t *testing.T) {
-	m := newModel(t, spread(t), inProject("td"))
-	typeInto(m, "/", "one")
-	press(m, "enter")
-
-	pick(t, m, "all scopes")
-
-	if m.filters.title != "one" {
-		t.Errorf("the pick cleared the filter: %q", m.filters.title)
+// TestEscClearsATagFilterBeforeOpeningThePicker: a tag filter hides rows as
+// surely as a title filter, so it counts as a filter being set.
+func TestEscClearsATagFilterBeforeOpeningThePicker(t *testing.T) {
+	m := newModel(t, tagged(t))
+	press(m, "t")
+	if m.filters.tag == "" {
+		t.Fatal("t set no tag filter")
 	}
-	if got := strings.Join(titles(m), ","); got != "global one,acme one,td one,zeta one" {
-		t.Errorf("the picked list shows %s, want the filter applied to it", got)
+
+	press(m, "esc")
+	if m.picker.open {
+		t.Error("esc opened the picker while a tag filter was set")
+	}
+	if m.filters.tag != "" {
+		t.Errorf("esc left the tag filter as %q", m.filters.tag)
 	}
 }
 
@@ -220,14 +239,14 @@ func TestPickerIsModal(t *testing.T) {
 	save(t, s, item{id: "aaa", title: "do not touch me", updated: ago(1)})
 
 	m := newModel(t, s, withEditor("false"))
-	press(m, "g")
-	for _, key := range []string{"x", "d", "a", "t", "r", "/", "?"} {
+	press(m, "esc")
+	for _, key := range []string{" ", "x", "a", "t", "r", "/", "?"} {
 		if cmd := press(m, key); cmd != nil {
-			t.Errorf("%s acted while the picker was up", key)
+			t.Errorf("%q acted while the picker was up", key)
 		}
 	}
 	if m.Entries()[0].Item.Done() {
-		t.Error("x marked an item done behind the picker")
+		t.Error("space marked an item done behind the picker")
 	}
 	if m.prompt.open() || m.showHelp {
 		t.Error("a key opened another screen behind the picker")
@@ -308,7 +327,7 @@ func TestPickerFitsANarrowPane(t *testing.T) {
 
 	m := newModel(t, s, inProject("td"))
 	resize(m, 60)
-	press(m, "g")
+	press(m, "esc")
 
 	for _, line := range lines(m.View()) {
 		if got := ansi.StringWidth(line); got > 60 {
@@ -334,7 +353,7 @@ func TestPickerNeverExceedsThePaneHeight(t *testing.T) {
 	}
 
 	m := newModel(t, s)
-	press(m, "g")
+	press(m, "esc")
 	for range len(m.picker.rows) {
 		press(m, "j")
 	}
@@ -368,7 +387,7 @@ func TestPickerNeverExceedsThePaneHeight(t *testing.T) {
 // it would show one row of the overlay to a terminal that has room for forty.
 func TestPickerRendersWholeBeforeTheFirstSize(t *testing.T) {
 	m := newModel(t, spread(t), inProject("td"))
-	press(m, "g")
+	press(m, "esc")
 
 	view := plain(m.pickerView())
 	for _, want := range []string{"td — lists", "global", "all scopes", "acme", "zeta", pickerHint} {
@@ -389,7 +408,7 @@ func TestPickerWindowsItsRows(t *testing.T) {
 
 	m := newModel(t, s)
 	m.Update(tea.WindowSizeMsg{Width: 40, Height: 8})
-	press(m, "g")
+	press(m, "esc")
 
 	for i := 0; i < 11; i++ {
 		view := plain(m.pickerView())

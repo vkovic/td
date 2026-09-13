@@ -121,25 +121,29 @@ func newModel(t *testing.T, s *store.Store, opts ...func(*Options)) *Model {
 	return m
 }
 
-// press sends a keystroke to the model, as Bubble Tea would.
+// press sends a keystroke to the model, as Bubble Tea would. Space arrives as
+// a key type of its own rather than as a rune, so it is sent that way.
 func press(m *Model, key string) tea.Cmd {
 	var msg tea.KeyMsg
-	if len(key) == 1 {
+	switch {
+	case key == " ":
+		msg = tea.KeyMsg{Type: tea.KeySpace, Runes: []rune(key)}
+	case len(key) == 1:
 		msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
-	} else {
+	default:
 		msg = tea.KeyMsg{Type: keyTypes[key]}
 	}
 	_, cmd := m.Update(msg)
 	return cmd
 }
 
-// pick moves to a list through the picker, the way a person does: g, then the
-// cursor onto the row with that label, then enter.
+// pick moves to a list through the picker, the way a person does: esc on an
+// unfiltered list, then the cursor onto the row with that label, then enter.
 func pick(t *testing.T, m *Model, label string) {
 	t.Helper()
-	press(m, "g")
+	press(m, "esc")
 	if !m.picker.open {
-		t.Fatalf("g did not open the picker")
+		t.Fatalf("esc did not open the picker")
 	}
 	for i, row := range m.picker.rows {
 		if row.label() == label {
@@ -965,7 +969,7 @@ func TestTheHeaderNamesTheListOnScreen(t *testing.T) {
 		t.Errorf("the status line still names the list: %q", status)
 	}
 
-	// g changes the list, and the header with it.
+	// A pick changes the list, and the header with it.
 	pick(t, m, "all scopes")
 	if got := drawn(m.View())[0]; got != "all scopes" {
 		t.Errorf("after picking the merged view the header is %q", got)
@@ -986,7 +990,7 @@ func TestTheHeaderNamesTheListOnScreen(t *testing.T) {
 		t.Errorf("the help overlay opens on %q, want its own heading", got)
 	}
 	press(m, "?")
-	press(m, "g")
+	press(m, "esc")
 	if got := drawn(m.View())[0]; got != "td — lists" {
 		t.Errorf("the picker opens on %q, want its own heading", got)
 	}

@@ -139,7 +139,7 @@ const SourceTUI = "tui"
 
 // currentAddScope is the list a new item is filed in: the one on screen,
 // whether that is the directory's own scope, the global list or a project
-// picked with g. Filing anywhere else would put the item where the person who
+// picked from the picker. Filing anywhere else would put the item where the person who
 // typed it is not looking.
 //
 // The merged view is the exception. It spans every scope and has no single

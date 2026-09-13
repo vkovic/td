@@ -85,8 +85,8 @@ func TestLegendDropsEntriesToFit(t *testing.T) {
 	}
 	for _, width := range []int{80, 60, 40, 20, 10} {
 		got := legend(width)
-		if len(got) > width {
-			t.Errorf("the legend at width %d is %d columns: %q", width, len(got), got)
+		if n := ansi.StringWidth(got); n > width {
+			t.Errorf("the legend at width %d is %d columns: %q", width, n, got)
 		}
 		// ? is the only thing on screen that says what the dropped keys were,
 		// so it is the one entry that survives every width.
@@ -109,7 +109,7 @@ func inTableOrder(rendered string) bool {
 		if b.short == "" {
 			continue
 		}
-		i := strings.Index(rendered, b.keys[0]+" "+b.short)
+		i := strings.Index(rendered, keyLabel(b.keys[0])+" "+b.short)
 		if i < 0 {
 			continue
 		}
@@ -161,7 +161,7 @@ func TestLegendComesFromTheSameTable(t *testing.T) {
 		if b.short == "" {
 			continue
 		}
-		if !strings.Contains(got, b.keys[0]+" "+b.short) {
+		if !strings.Contains(got, keyLabel(b.keys[0])+" "+b.short) {
 			t.Errorf("the legend is missing %s: %q", b.name(), got)
 		}
 	}
@@ -170,7 +170,7 @@ func TestLegendComesFromTheSameTable(t *testing.T) {
 		if b.short != "" {
 			continue
 		}
-		if strings.Contains(got, " "+b.keys[0]+" ") {
+		if strings.Contains(got, " "+keyLabel(b.keys[0])+" ") {
 			t.Errorf("%s has no short label but appears in the legend: %q", b.name(), got)
 		}
 	}
@@ -184,16 +184,16 @@ func TestOverlayIsModal(t *testing.T) {
 
 	m := newModel(t, s, withEditor("false"))
 	press(m, "?")
-	for _, key := range []string{"j", "x", "d", "a", "t", "g", "r"} {
+	for _, key := range []string{"j", " ", "x", "a", "t", "r"} {
 		if cmd := press(m, key); cmd != nil {
-			t.Errorf("%s acted while the overlay was up", key)
+			t.Errorf("%q acted while the overlay was up", key)
 		}
 	}
 	if m.Cursor() != 0 {
 		t.Errorf("the cursor moved to %d behind the overlay", m.Cursor())
 	}
 	if m.Entries()[0].Item.Done() {
-		t.Error("x marked an item done behind the overlay")
+		t.Error("space marked an item done behind the overlay")
 	}
 	if !m.showHelp {
 		t.Error("a key that is not a close key closed the overlay")
@@ -216,6 +216,36 @@ func TestOverlayClosesOnEscAndQ(t *testing.T) {
 		}
 		if m.showHelp {
 			t.Errorf("%s did not close the overlay", key)
+		}
+	}
+}
+
+// TestHelpShowsTheReboundKeys: space marks done, x deletes and esc reaches the
+// picker, so both the legend and the overlay say so. Space is drawn as ␣,
+// because Bubble Tea's name for it is a blank that would print as a gap.
+func TestHelpShowsTheReboundKeys(t *testing.T) {
+	got := legend(0)
+	for _, want := range []string{"␣ done", "x delete", "esc scope"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the legend is missing %q: %q", want, got)
+		}
+	}
+
+	m := newModel(t, newStore(t))
+	press(m, "?")
+	rows := map[string]string{}
+	for _, line := range lines(plain(m.View())) {
+		if fields := strings.Fields(line); len(fields) >= 2 && strings.HasPrefix(line, "  ") {
+			rows[fields[0]] = strings.Join(fields[1:], " ")
+		}
+	}
+	for key, does := range map[string]string{
+		"␣":   "mark the selected item done",
+		"x":   "move the selected item to the trash",
+		"esc": "clear the filters, or with none set, pick the list",
+	} {
+		if !strings.HasPrefix(rows[key], does) {
+			t.Errorf("the overlay lists %s as %q, want it to %s", key, rows[key], does)
 		}
 	}
 }

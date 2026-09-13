@@ -12,7 +12,7 @@ import (
 	"github.com/vkovic/td/internal/store"
 )
 
-// TestToggleDoneMarksAndReopens: x stamps done_at and x again clears it, and
+// TestToggleDoneMarksAndReopens: space stamps done_at and space again clears it, and
 // the row crosses the rule each time because the listing is re-read after.
 func TestToggleDoneMarksAndReopens(t *testing.T) {
 	s := newStore(t)
@@ -24,10 +24,10 @@ func TestToggleDoneMarksAndReopens(t *testing.T) {
 	// that must stay open, so step onto the other.
 	press(m, "j")
 
-	drain(t, m, press(m, "x"))
+	drain(t, m, press(m, " "))
 	e := findTitle(t, m, "finish me")
 	if !e.Item.Done() {
-		t.Fatal("x did not mark the item done")
+		t.Fatal("space did not mark the item done")
 	}
 	if got := strings.Join(titles(m), ","); got != "leave open,finish me" {
 		t.Errorf("the listing is %s, want the done item below the open one", got)
@@ -39,9 +39,9 @@ func TestToggleDoneMarksAndReopens(t *testing.T) {
 	// The reload put the item back under the cursor's old neighbour, so find
 	// it again before undoing it.
 	m.cursor = indexOf(m, "finish me")
-	drain(t, m, press(m, "x"))
+	drain(t, m, press(m, " "))
 	if findTitle(t, m, "finish me").Item.Done() {
-		t.Error("x again did not reopen the item")
+		t.Error("space again did not reopen the item")
 	}
 }
 
@@ -55,14 +55,14 @@ func TestToggleDoneCommitsOnce(t *testing.T) {
 	drain(t, m, m.runEpilogue("")) // commit the fixture first
 	before := commitCount(t, s)
 
-	drain(t, m, press(m, "x"))
+	drain(t, m, press(m, " "))
 
 	if got, want := commitCount(t, s), before+1; got != want {
-		t.Errorf("x left %d commits, want %d", got, want)
+		t.Errorf("space left %d commits, want %d", got, want)
 	}
 }
 
-// TestRemoveMovesToDeleted: d takes the item out of the list and leaves the
+// TestRemoveMovesToDeleted: x takes the item out of the list and leaves the
 // file under deleted/, so an accident is recoverable from the directory.
 func TestRemoveMovesToDeleted(t *testing.T) {
 	s := newStore(t)
@@ -70,7 +70,7 @@ func TestRemoveMovesToDeleted(t *testing.T) {
 	save(t, s, item{id: "bbb", title: "keep me", updated: ago(2)})
 
 	m := newModel(t, s)
-	drain(t, m, press(m, "d"))
+	drain(t, m, press(m, "x"))
 
 	if got := strings.Join(titles(m), ","); got != "keep me" {
 		t.Errorf("the listing is %s, want only the kept item", got)
@@ -102,10 +102,31 @@ func TestRemoveCommitsOnce(t *testing.T) {
 	drain(t, m, m.runEpilogue(""))
 	before := commitCount(t, s)
 
-	drain(t, m, press(m, "d"))
+	drain(t, m, press(m, "x"))
 
 	if got, want := commitCount(t, s), before+1; got != want {
-		t.Errorf("d left %d commits, want %d", got, want)
+		t.Errorf("x left %d commits, want %d", got, want)
+	}
+}
+
+// TestGAndDDoNothing: g opened the picker and d deleted before they were
+// rebound, and neither was kept as an alias. A key someone still reaches for
+// out of habit must not quietly act.
+func TestGAndDDoNothing(t *testing.T) {
+	s := newStore(t)
+	save(t, s, item{id: "aaa", title: "do not touch me", updated: ago(1)})
+
+	m := newModel(t, s)
+	for _, key := range []string{"g", "d"} {
+		if cmd := press(m, key); cmd != nil {
+			t.Errorf("%s returned a command", key)
+		}
+	}
+	if m.picker.open {
+		t.Error("g opened the picker")
+	}
+	if e := findTitle(t, m, "do not touch me"); e.Ref.Area != store.Active {
+		t.Errorf("d filed the item under %q, want it still active", e.Ref.Area)
 	}
 }
 
@@ -117,9 +138,9 @@ func TestMutationsRunInOrder(t *testing.T) {
 	save(t, s, item{id: "bbb", title: "second", updated: ago(2)})
 
 	m := newModel(t, s)
-	drain(t, m, press(m, "x")) // done: first
+	drain(t, m, press(m, " ")) // done: first
 	m.cursor = indexOf(m, "second")
-	drain(t, m, press(m, "d")) // remove: second
+	drain(t, m, press(m, "x")) // remove: second
 
 	if got := strings.Join(titles(m), ","); got != "first" {
 		t.Errorf("the listing is %s, want the done item alone", got)
@@ -141,15 +162,15 @@ func TestGateRefusesASecondEpilogue(t *testing.T) {
 	save(t, s, item{id: "aaa", title: "finish me", updated: ago(1)})
 
 	m := newModel(t, s)
-	if cmd := press(m, "x"); cmd == nil {
-		t.Fatal("x returned no command")
+	if cmd := press(m, " "); cmd == nil {
+		t.Fatal("space returned no command")
 	}
 	if !m.Busy() {
-		t.Fatal("x did not mark the model busy")
+		t.Fatal("space did not mark the model busy")
 	}
-	for _, key := range []string{"x", "p", "d", "r", "e", "a"} {
+	for _, key := range []string{" ", "p", "x", "r", "e", "a"} {
 		if cmd := press(m, key); cmd != nil {
-			t.Errorf("%s ran while an epilogue was in flight", key)
+			t.Errorf("%q ran while an epilogue was in flight", key)
 		}
 	}
 	if m.status != "still working" {
@@ -179,7 +200,7 @@ func TestRefreshForcesCommitAndPush(t *testing.T) {
 	}
 }
 
-// TestMutatingKeysDoNotForceCommit: x mirrors td done, which honors the
+// TestMutatingKeysDoNotForceCommit: space mirrors td done, which honors the
 // configuration. Only the key asked for outright overrides it.
 func TestMutatingKeysDoNotForceCommit(t *testing.T) {
 	s := newStore(t)
@@ -191,13 +212,13 @@ func TestMutatingKeysDoNotForceCommit(t *testing.T) {
 	})
 	before := commitCount(t, s)
 
-	drain(t, m, press(m, "x"))
+	drain(t, m, press(m, " "))
 
 	if got := commitCount(t, s); got != before {
-		t.Errorf("x with auto_commit off left %d commits, want %d", got, before)
+		t.Errorf("space with auto_commit off left %d commits, want %d", got, before)
 	}
 	if !findTitle(t, m, "finish me").Item.Done() {
-		t.Error("x did not mark the item done when the commit was skipped")
+		t.Error("space did not mark the item done when the commit was skipped")
 	}
 }
 
@@ -229,7 +250,7 @@ func TestRefreshRecordsAHandEdit(t *testing.T) {
 // mtime to the in-memory value, so a clock carrying nanoseconds leaves mtime a
 // fraction of a second past the updated it reads back as — which is exactly
 // what HandEdited calls an outside edit. The pane then reported "1 hand edit
-// recorded" for the x the user had just pressed, and rewrote the file to
+// recorded" for the item the user had just marked done, and rewrote the file to
 // "catch up" a timestamp it had written itself a moment earlier.
 //
 // This test deliberately does not inject a clock. Every other test here pins
@@ -249,7 +270,7 @@ func TestTheDefaultClockDoesNotForgeAHandEdit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	drain(t, m, press(m, "x"))
+	drain(t, m, press(m, " "))
 
 	entries, err := s.List(store.Global, store.Active)
 	if err != nil {
@@ -268,7 +289,7 @@ func TestTheDefaultClockDoesNotForgeAHandEdit(t *testing.T) {
 		}
 	}
 	if strings.Contains(m.status, "hand edit") {
-		t.Errorf("the status claims %q after an x nobody hand edited", m.status)
+		t.Errorf("the status claims %q after a toggle nobody hand edited", m.status)
 	}
 }
 
@@ -283,12 +304,12 @@ func TestStatusDoesNotClaimAPushWithoutARemote(t *testing.T) {
 	}
 }
 
-// TestActionsOnAnEmptyListDoNothing: x and d have nothing under the cursor.
+// TestActionsOnAnEmptyListDoNothing: space and x have nothing under the cursor.
 func TestActionsOnAnEmptyListDoNothing(t *testing.T) {
 	m := newModel(t, newStore(t))
-	for _, key := range []string{"x", "p", "d"} {
+	for _, key := range []string{" ", "p", "x"} {
 		if cmd := press(m, key); cmd != nil {
-			t.Errorf("%s on an empty list returned a command", key)
+			t.Errorf("%q on an empty list returned a command", key)
 		}
 	}
 }
@@ -344,7 +365,7 @@ func crossedRule(t *testing.T, m *Model, title string) bool {
 	return false
 }
 
-// TestAnActionSurvivesTheRowsBeingRebuilt: x writes the change and puts the
+// TestAnActionSurvivesTheRowsBeingRebuilt: space writes the change and puts the
 // result back on the row, but the listing is not re-read until the epilogue has
 // committed and pushed. Anything that rebuilds the visible rows inside that
 // window rebuilds them from the loaded listing, so the loaded listing has to
@@ -362,7 +383,7 @@ func TestAnActionSurvivesTheRowsBeingRebuilt(t *testing.T) {
 
 	// The epilogue command is deliberately not drained: this is the window
 	// between the key press and the reload.
-	press(m, "x")
+	press(m, " ")
 	m.applyFilters()
 
 	if !findTitle(t, m, "finish me").Item.Done() {
@@ -375,7 +396,7 @@ func TestAnActionSurvivesTheRowsBeingRebuilt(t *testing.T) {
 	}
 }
 
-// TestARemovalSurvivesTheRowsBeingRebuilt: the same window, for d. The row
+// TestARemovalSurvivesTheRowsBeingRebuilt: the same window, for x. The row
 // stays on screen until the reload drops it either way, so what has to survive
 // a rebuild is where the item is now filed — a listing still calling it active
 // is one an action taken from it would resolve in the wrong area.
@@ -389,7 +410,7 @@ func TestARemovalSurvivesTheRowsBeingRebuilt(t *testing.T) {
 	m.applyFilters()
 	m.cursor = indexOf(m, "delete me")
 
-	press(m, "d")
+	press(m, "x")
 	m.applyFilters()
 
 	for _, e := range m.Loaded() {
@@ -415,7 +436,7 @@ func TestTheCursorSurvivesAnItemBecomingDone(t *testing.T) {
 	m.Update(tea.WindowSizeMsg{Width: 60, Height: 5})
 	m.cursor = indexOf(m, "alpha")
 
-	press(m, "x")
+	press(m, " ")
 
 	if !strings.Contains(m.View(), "❯") {
 		t.Errorf("the cursor is not drawn anywhere after the row moved:\n%s", m.View())

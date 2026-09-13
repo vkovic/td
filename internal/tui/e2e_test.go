@@ -107,8 +107,8 @@ func TestDefinitionOfDone(t *testing.T) {
 	}
 	everythingParses(t, s)
 
-	// 3. x from the pane is visible in the file itself, not just on screen.
-	drain(t, m, press(m, "x"))
+	// 3. Space from the pane is visible in the file itself, not just on screen.
+	drain(t, m, press(m, " "))
 	settle(t, m, 2*time.Second)
 
 	it, err := s.Load(m.Entries()[0].Ref.Path)
@@ -116,7 +116,7 @@ func TestDefinitionOfDone(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	if !it.Done() {
-		t.Error("x did not write done_at to the file")
+		t.Error("space did not write done_at to the file")
 	}
 
 	// 4. And the other direction: a change another process makes is visible in
@@ -129,12 +129,12 @@ func TestDefinitionOfDone(t *testing.T) {
 	}
 	everythingParses(t, s)
 
-	// 5. d moves it to the trash, where it is recoverable by hand.
-	drain(t, m, press(m, "d"))
+	// 5. x moves it to the trash, where it is recoverable by hand.
+	drain(t, m, press(m, "x"))
 	settle(t, m, 2*time.Second)
 
 	if len(m.Entries()) != 0 {
-		t.Errorf("the pane still lists %d items after d", len(m.Entries()))
+		t.Errorf("the pane still lists %d items after x", len(m.Entries()))
 	}
 	if !filesUnder(t, s.Dir(store.Global, store.Deleted), it.ID) {
 		t.Errorf("%s does not hold the removed item", s.Dir(store.Global, store.Deleted))
@@ -212,7 +212,7 @@ func TestTwoProcessesUnderOneLock(t *testing.T) {
 		defer wg.Done()
 		td(t, s, "add", "added while the pane was committing")
 	}()
-	drain(t, m, press(m, "x"))
+	drain(t, m, press(m, " "))
 	wg.Wait()
 
 	everythingParses(t, s)

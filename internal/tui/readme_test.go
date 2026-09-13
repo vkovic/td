@@ -51,12 +51,12 @@ func readmeKeys(t *testing.T) map[string]string {
 // promising a three-way cycle for as long as nobody read it: a row nothing
 // asserts on is a row that rots.
 //
-// The arrows and the return key are written as symbols in the README and as
-// names in the table, and the environment table shares the README's pipe
-// syntax, so both are translated rather than compared raw.
+// The arrows, the return key and space are written as symbols in the README
+// and as names in the table, and the environment table shares the README's
+// pipe syntax, so both are translated rather than compared raw.
 func TestReadmeDocumentsEveryKey(t *testing.T) {
 	documented := readmeKeys(t)
-	symbols := map[string]string{"down": "↓", "up": "↑", "enter": "⏎"}
+	symbols := keySymbols
 
 	for _, b := range keyMap() {
 		found := false
@@ -83,6 +83,10 @@ func TestReadmeDocumentsEveryKey(t *testing.T) {
 	}
 }
 
+// keySymbols maps the key names Bubble Tea reports to the symbols the README
+// writes them as. Space is reported as " ", which a table cell cannot show.
+var keySymbols = map[string]string{"down": "↓", "up": "↑", "enter": "⏎", " ": "␣"}
+
 // unstyled drops the README's code ticks, so "open it in `$EDITOR`" and the
 // help's "open it in $EDITOR" are one description.
 func unstyled(s string) string { return strings.ReplaceAll(s, "`", "") }
@@ -91,7 +95,7 @@ func unstyled(s string) string { return strings.ReplaceAll(s, "`", "") }
 // removed from the table does not linger in the README.
 func TestReadmeDocumentsNoKeyThatDoesNothing(t *testing.T) {
 	bound := map[string]bool{}
-	symbols := map[string]string{"down": "↓", "up": "↑", "enter": "⏎"}
+	symbols := keySymbols
 	for _, b := range keyMap() {
 		for _, key := range b.keys {
 			bound[key] = true

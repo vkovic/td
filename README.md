@@ -90,7 +90,7 @@ it never records a hand edit, sweeps, commits or pushes, because two panes
 watching one store would otherwise drive each other in a loop.
 
 The pane reads from both ends. The top line names the list on screen in bold —
-the project, `global` or `all scopes` — and changes the moment `g` picks another
+the project, `global` or `all scopes` — and changes the moment you pick another
 list; a dim rule sits under it, and any warnings under that. Open items start
 below, the done section sits against the bottom of the list with the
 `── done ──` rule over it, and the status line and key legend hold the last two
@@ -121,23 +121,22 @@ shell.
 
 ### Keys
 
-| Key        | Does                                                   |
-| ---------- | ------------------------------------------------------ |
-| `j` / `↓`  | move down                                              |
-| `k` / `↑`  | move up                                                |
-| `a`        | add an item, then open it in `$EDITOR`                 |
-| `e` / `⏎`  | open the selected item in `$EDITOR`                    |
-| `x`        | mark the selected item done, or reopen it              |
-| `p`        | pin the selected item to the top, or unpin it          |
-| `d`        | move the selected item to the trash                    |
-| `/`        | filter by title                                        |
-| `t`        | cycle the tag filter                                   |
-| `g`        | pick the list to show: global, all, or a project       |
-| `i`        | show or hide each item's id                            |
-| `esc`      | clear the filters                                      |
-| `r`        | record hand edits, sweep, commit and push now          |
-| `?`        | show this help                                         |
-| `q`        | quit                                                   |
+| Key       | Does                                                                                  |
+| --------- | ------------------------------------------------------------------------------------- |
+| `j` / `↓` | move down                                                                             |
+| `k` / `↑` | move up                                                                               |
+| `a`       | add an item, then open it in `$EDITOR`                                                |
+| `e` / `⏎` | open the selected item in `$EDITOR`                                                   |
+| `␣`       | mark the selected item done, or reopen it                                             |
+| `p`       | pin the selected item to the top, or unpin it                                         |
+| `x`       | move the selected item to the trash                                                   |
+| `/`       | filter by title                                                                       |
+| `t`       | cycle the tag filter                                                                  |
+| `esc`     | clear the filters, or with none set, pick the list to show: global, all, or a project |
+| `i`       | show or hide each item's id                                                           |
+| `r`       | record hand edits, sweep, commit and push now                                         |
+| `?`       | show this help                                                                        |
+| `q`       | quit                                                                                  |
 
 ### Referring to an item by its id
 
@@ -177,17 +176,19 @@ in it.
 field editing: `e` opens the item's markdown file, and whatever you leave behind
 is the item. Quitting the editor without saving changes nothing.
 
-`x`, `p`, `d`, `e` and `a` each end in the same tail the matching CLI command
+`␣`, `p`, `x`, `e` and `a` each end in the same tail the matching CLI command
 runs — record hand edits, sweep the archive, commit, push — and honour
 `auto_commit` and `auto_push` exactly as `td done`, `td pin`, `td rm`, `td edit`
 and `td add` do. `r` is
 the exception: asking for the tail outright overrides both settings, the way
 `td commit` commits with `auto_commit` off.
 
-`g` opens the list picker: the global list, every scope merged, then every
-project under `~/.td/`, by name and including the ones with nothing open. `j`
-and `k` move, `⏎` picks, `esc` cancels and leaves the pane where it was. The
-cursor opens on the list already showing, so `g` `⏎` changes nothing. That is
+`esc` opens the list picker: the global list, every scope merged, then every
+project under `~/.td/`, by name and including the ones with nothing open. While
+a title or tag filter is set, `esc` clears the filters instead, and a second
+`esc` opens the picker. `j` and `k` move, `⏎` picks, `esc` cancels and leaves
+the pane where it was. The cursor opens on the list already showing, so `esc`
+`⏎` changes nothing. That is
 how you read another project's items without leaving the pane — `td ls -p acme`
 from a second shell is the same list.
 

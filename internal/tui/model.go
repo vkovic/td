@@ -24,7 +24,7 @@ import (
 // merged.
 //
 // The scope on screen is not a mode. The marker's scope, the global list and a
-// project picked with g are the same kind of thing to everything downstream —
+// project picked from the picker are the same kind of thing to everything downstream —
 // the listing, the label, the list an add is filed in — and a fixed set of
 // modes could not name the third. The merged view is the one state that names
 // no scope of its own, so it is the one flag here.
@@ -350,6 +350,18 @@ func (m *Model) editSelected() tea.Cmd {
 		return m.editItem("edit", *e)
 	}
 	return nil
+}
+
+// escape is esc on the list: it clears the filters when any are set, and
+// otherwise opens the picker. Clearing comes first because a filter hides
+// rows, and a person pressing esc on a narrowed list wants them back before
+// wanting a different list.
+func (m *Model) escape() tea.Cmd {
+	if !m.filters.none() {
+		m.clearFilters()
+		return nil
+	}
+	return m.openPicker()
 }
 
 // clearFilters puts the whole listing back on screen.
