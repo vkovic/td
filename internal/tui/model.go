@@ -371,10 +371,20 @@ func (m *Model) clearFilters() {
 }
 
 // handlePromptKey drives the inline line editor. Enter submits, esc abandons,
-// and everything else types.
+// and everything else types — j, k and q included, because a title can hold
+// any of them and a key that moved the cursor instead could never be searched
+// for.
+//
+// The filter prompt narrows on every keystroke rather than on enter, so the
+// list answers what is typed while it is being typed. Abandoning it therefore
+// has something to undo: esc drops the title filter the keystrokes built, and
+// leaves the tag filter, which the prompt never touched.
 func (m *Model) handlePromptKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.Type {
 	case tea.KeyEsc, tea.KeyCtrlC:
+		if m.prompt.kind == promptFilter {
+			m.setTitleFilter("")
+		}
 		m.prompt = prompt{}
 	case tea.KeyEnter:
 		p := m.prompt
@@ -382,20 +392,38 @@ func (m *Model) handlePromptKey(msg tea.KeyMsg) tea.Cmd {
 		return m.submitPrompt(p)
 	case tea.KeyBackspace:
 		m.prompt.backspace()
+		m.narrowAsTyped()
 	case tea.KeyRunes, tea.KeySpace:
 		m.prompt.typed(msg)
+		m.narrowAsTyped()
 	}
 	return nil
 }
 
-// submitPrompt acts on a finished prompt.
+// narrowAsTyped applies the filter prompt's value to the list after a
+// keystroke. Other prompts wait for enter.
+func (m *Model) narrowAsTyped() {
+	if m.prompt.kind == promptFilter {
+		m.setTitleFilter(m.prompt.value)
+	}
+}
+
+// setTitleFilter narrows by title, trimmed so a space typed ahead of the next
+// word does not empty the list for the instant before that word arrives.
+func (m *Model) setTitleFilter(query string) {
+	m.filters.title = strings.TrimSpace(query)
+	m.applyFilters()
+}
+
+// submitPrompt acts on a finished prompt. A filter has already been applied
+// keystroke by keystroke, so enter only closes the input over it; an empty
+// query leaves no title filter, and the list's name comes back.
 func (m *Model) submitPrompt(p prompt) tea.Cmd {
 	switch p.kind {
 	case promptAdd:
 		return m.addItem(p.value)
 	case promptFilter:
-		m.filters.title = strings.TrimSpace(p.value)
-		m.applyFilters()
+		m.setTitleFilter(p.value)
 	}
 	return nil
 }

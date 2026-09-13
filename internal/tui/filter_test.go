@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/vkovic/td/internal/store"
 )
@@ -223,13 +226,234 @@ func TestCursorFollowsItsItemThroughAFilter(t *testing.T) {
 }
 
 // TestFilterPromptStartsFromTheActiveFilter: reopening / offers what is already
-// filtering, so narrowing it further does not mean retyping it.
+// filtering, so narrowing it further does not mean retyping it, and a
+// backspace widens the list at once.
 func TestFilterPromptStartsFromTheActiveFilter(t *testing.T) {
 	m := newModel(t, tagged(t))
+	typeInto(m, "/", "docsi")
+	press(m, "enter")
+	if got := strings.Join(titles(m), ","); got != "rewrite the docs index" {
+		t.Fatalf("the kept filter shows %s", got)
+	}
+	press(m, "/")
+	if m.prompt.value != "docsi" {
+		t.Errorf("the prompt offers %q, want the active filter", m.prompt.value)
+	}
+	press(m, "backspace")
+	if got := strings.Join(titles(m), ","); got != "write the docs,rewrite the docs index" {
+		t.Errorf("backspace left %s on screen, want both docs items without pressing enter", got)
+	}
+}
+
+// fuzzy is a fixture store whose titles tell a subsequence match from a
+// substring one, with a done item among them.
+func fuzzy(t *testing.T) *store.Store {
+	t.Helper()
+	s := newStore(t)
+	save(t, s, item{id: "aaa", title: "fix docs build", updated: ago(1)})
+	save(t, s, item{id: "bbb", title: "feed the dog", updated: ago(2)})
+	save(t, s, item{id: "ccc", title: "Find Dead Branches", updated: ago(3), doneAt: done(ago(3))})
+	save(t, s, item{id: "ddd", title: "ship the release", updated: ago(4)})
+	return s
+}
+
+// TestMatchTitle: the runes of the query in order, any case, anywhere in the
+// title, landing on the first rune that fits each.
+func TestMatchTitle(t *testing.T) {
+	for _, tc := range []struct {
+		title, query string
+		want         []int
+		ok           bool
+	}{
+		{"fix docs build", "fdb", []int{0, 4, 9}, true},
+		{"fix docs build", "FDB", []int{0, 4, 9}, true},
+		{"fix docs build", "bdf", nil, false},
+		{"fix docs build", "fix d", []int{0, 1, 2, 3, 4}, true},
+		{"fix docs build", "", nil, true},
+		{"ça va", "av", []int{1, 3}, true},
+		{"short", "shorter", nil, false},
+	} {
+		got, ok := matchTitle(tc.title, tc.query)
+		if ok != tc.ok || fmt.Sprint(got) != fmt.Sprint(tc.want) {
+			t.Errorf("matchTitle(%q, %q) = %v, %v; want %v, %v", tc.title, tc.query, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
+// TestTitleFilterNarrowsAsYouType: every keystroke redraws the list, before
+// enter, and a match is a subsequence of the title in either section.
+func TestTitleFilterNarrowsAsYouType(t *testing.T) {
+	m := newModel(t, fuzzy(t))
+
+	press(m, "/")
+	if len(m.Entries()) != 4 {
+		t.Fatalf("opening the input hid rows: %v", titles(m))
+	}
+	for _, step := range []struct{ key, want string }{
+		{"f", "fix docs build,feed the dog,Find Dead Branches"},
+		{"d", "fix docs build,feed the dog,Find Dead Branches"},
+		{"b", "fix docs build,Find Dead Branches"},
+		{"backspace", "fix docs build,feed the dog,Find Dead Branches"},
+	} {
+		press(m, step.key)
+		if got := strings.Join(titles(m), ","); got != step.want {
+			t.Errorf("after %q the list is %s, want %s", step.key, got, step.want)
+		}
+	}
+	if !m.prompt.open() {
+		t.Error("the input closed without enter")
+	}
+}
+
+// TestEveryKeyTypesIntoTheFilter: j, k and q are letters in a title, so while
+// the input is open they go into the query and neither move the cursor nor
+// quit.
+func TestEveryKeyTypesIntoTheFilter(t *testing.T) {
+	s := newStore(t)
+	save(t, s, item{id: "aaa", title: "jkq one", updated: ago(1)})
+	save(t, s, item{id: "bbb", title: "two", updated: ago(2)})
+	m := newModel(t, s)
+
+	typeInto(m, "/", "jkq")
+	press(m, "down")
+	if m.prompt.value != "jkq" {
+		t.Errorf("the query is %q, want jkq", m.prompt.value)
+	}
+	if m.quitting || m.Cursor() != 0 {
+		t.Errorf("a key in the input acted on the list: quitting %v, cursor %d", m.quitting, m.Cursor())
+	}
+	if got := strings.Join(titles(m), ","); got != "jkq one" {
+		t.Errorf("the list is %s, want the one title holding jkq", got)
+	}
+}
+
+// TestTheFilterHeadsThePane: the input covers the list's name while open, the
+// kept query stays there after enter, the footer echoes it throughout, and the
+// name comes back once the title filter goes.
+func TestTheFilterHeadsThePane(t *testing.T) {
+	m := newModel(t, tagged(t))
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+
+	typeInto(m, "/", "docs")
+	got := drawn(m.View())
+	if got[0] != "/docs█" {
+		t.Errorf("with the input open the top line is %q, want /docs█", got[0])
+	}
+	if status := got[len(got)-2]; !strings.Contains(status, "· filtered /docs") {
+		t.Errorf("the status line does not echo the filter while typing: %q", status)
+	}
+
+	press(m, "enter")
+	got = drawn(m.View())
+	if got[0] != "/docs" {
+		t.Errorf("after enter the top line is %q, want the kept query", got[0])
+	}
+	if status := got[len(got)-2]; !strings.Contains(status, "· filtered /docs") {
+		t.Errorf("the status line does not echo the kept filter: %q", status)
+	}
+
+	press(m, "esc")
+	if got := drawn(m.View())[0]; got != "global" {
+		t.Errorf("after clearing the filter the top line is %q, want the list's name", got)
+	}
+
+	// Enter on an emptied input is a cleared filter, not a kept empty one.
 	typeInto(m, "/", "docs")
 	press(m, "enter")
 	press(m, "/")
-	if m.prompt.value != "docs" {
-		t.Errorf("the prompt offers %q, want the active filter", m.prompt.value)
+	for range 4 {
+		press(m, "backspace")
+	}
+	press(m, "enter")
+	if m.filters.title != "" || drawn(m.View())[0] != "global" {
+		t.Errorf("enter on an empty query left %q and the top line %q", m.filters.title, drawn(m.View())[0])
+	}
+}
+
+// TestEscInTheFilterDropsOnlyTheTitle: esc abandons what the input built and
+// nothing else, so a tag filter set before it is still narrowing afterwards.
+func TestEscInTheFilterDropsOnlyTheTitle(t *testing.T) {
+	m := newModel(t, tagged(t))
+	for m.filters.tag != "Backend" {
+		press(m, "t")
+	}
+	typeInto(m, "/", "docs")
+	if got := strings.Join(titles(m), ","); got != "rewrite the docs index" {
+		t.Fatalf("the filters did not combine while typing: %s", got)
+	}
+
+	press(m, "esc")
+	if m.prompt.open() {
+		t.Error("esc left the input open")
+	}
+	if m.filters.title != "" || m.filters.tag != "Backend" {
+		t.Errorf("esc left the filters as %+v, want only the tag", m.filters)
+	}
+	if got := strings.Join(titles(m), ","); got != "fix the backend,rewrite the docs index,old backend chore" {
+		t.Errorf("after esc the list is %s, want every backend item", got)
+	}
+}
+
+// TestMatchedRunesAreUnderlined: the runes the query landed on are underlined,
+// in an open row and in a done one, on top of the style the row already has.
+func TestMatchedRunesAreUnderlined(t *testing.T) {
+	m := newModel(t, fuzzy(t))
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
+	typeInto(m, "/", "fdb")
+	rows := listText(m)
+
+	for _, want := range []struct{ what, text string }{
+		{"the open row's f", m.styles.title.Underline(true).Render("f")},
+		{"the open row's b", m.styles.title.Underline(true).Render("b")},
+		{"the open row's unmatched run", m.styles.title.Render("ix ")},
+		{"the done row's F", m.styles.done.Underline(true).Render("F")},
+		{"the done row's B", m.styles.done.Underline(true).Render("B")},
+	} {
+		if !strings.Contains(rows, want.text) {
+			t.Errorf("%s is not rendered as %q in:\n%q", want.what, want.text, rows)
+		}
+	}
+
+	press(m, "esc")
+	if strings.Contains(listText(m), m.styles.title.Underline(true).Render("f")) {
+		t.Error("an underline outlived the filter")
+	}
+}
+
+// TestTheFilterLineGivesWayLast: in a pane too short for all the chrome, the
+// top line holding the filter outlasts the rule, the legend and the status
+// line, whether the input is open or its query was kept.
+func TestTheFilterLineGivesWayLast(t *testing.T) {
+	s := newStore(t)
+	for i := range 30 {
+		save(t, s, item{id: fmt.Sprintf("a%02d", i), title: fmt.Sprintf("item number %02d", i), updated: ago(i + 1)})
+	}
+	rule := strings.Repeat("─", 60)
+
+	for _, kept := range []bool{false, true} {
+		m := newModel(t, s)
+		typeInto(m, "/", "item")
+		if kept {
+			press(m, "enter")
+		}
+		for height, want := range map[int][]string{
+			1: {"item number 00"},
+			2: {"/item", "item number 00"},
+			3: {"/item", "item number 00", "open, "},
+			4: {"/item", "item number 00", "open, ", "q quit"},
+			5: {"/item", rule, "item number 00", "open, ", "q quit"},
+		} {
+			m.Update(tea.WindowSizeMsg{Width: 60, Height: height})
+			got := drawn(m.View())
+			if len(got) != len(want) {
+				t.Errorf("kept %v, height %d: the view is %d lines, want %d:\n%s", kept, height, len(got), len(want), strings.Join(got, "\n"))
+				continue
+			}
+			for i := range want {
+				if !strings.Contains(got[i], want[i]) {
+					t.Errorf("kept %v, height %d: line %d is %q, want %q", kept, height, i, got[i], want[i])
+				}
+			}
+		}
 	}
 }

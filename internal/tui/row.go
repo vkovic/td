@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/vkovic/td/internal/store"
@@ -116,7 +117,7 @@ func (m *Model) row(e store.Entry, selected bool) string {
 		style = style.Bold(true)
 	}
 	texts := append([]string{}, before...)
-	texts = append(texts, m.fitTitle(style.Render(e.Item.Title), before, after))
+	texts = append(texts, m.fitTitle(m.renderTitle(e.Item.Title, style), before, after))
 	for _, c := range after {
 		texts = append(texts, c.text)
 	}
@@ -182,6 +183,42 @@ func (m *Model) fitTitle(title string, before []string, after []cell) string {
 		return title
 	}
 	return ansi.Truncate(title, room, "…")
+}
+
+// renderTitle styles a title, underlining the runes the title filter matched so
+// a row says why it survived the filter. Underline is the one attribute nothing
+// else on a row uses: bold means notes, dim strikethrough means done, and every
+// colour already means something. It layers over whichever of those the row
+// carries rather than replacing it.
+//
+// Each run of matched or unmatched runes is rendered as a whole, so the title
+// costs one set of escapes per run rather than per rune, and fitTitle still
+// trims the styled result.
+func (m *Model) renderTitle(title string, style lipgloss.Style) string {
+	positions, _ := matchTitle(title, m.filters.title)
+	if len(positions) == 0 {
+		return style.Render(title)
+	}
+	runes := []rune(title)
+	hit := make([]bool, len(runes))
+	for _, pos := range positions {
+		hit[pos] = true
+	}
+	matched := style.Underline(true)
+	var b strings.Builder
+	for start := 0; start < len(runes); {
+		end := start
+		for end < len(runes) && hit[end] == hit[start] {
+			end++
+		}
+		s := style
+		if hit[start] {
+			s = matched
+		}
+		b.WriteString(s.Render(string(runes[start:end])))
+		start = end
+	}
+	return b.String()
 }
 
 // overdue reports whether an open item's due date has passed. A done item is

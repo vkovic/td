@@ -3,6 +3,7 @@ package tui
 import (
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/vkovic/td/internal/store"
 )
@@ -13,7 +14,8 @@ import (
 // re-applies these, which is why a change landing while a filter is open does
 // not clear it — the filter was never part of what was loaded.
 type filters struct {
-	// title narrows to items whose title contains it, case-insensitively.
+	// title narrows to items whose title holds its runes in order, ignoring
+	// case, the way fzf matches: fdb keeps "fix docs build".
 	title string
 	// tag narrows to items carrying it, through the same comparison td ls -t
 	// uses.
@@ -35,7 +37,7 @@ func (f filters) apply(entries []store.Entry) []store.Entry {
 	}
 	kept := make([]store.Entry, 0, len(entries))
 	for _, e := range entries {
-		if f.title != "" && !strings.Contains(strings.ToLower(e.Item.Title), strings.ToLower(f.title)) {
+		if _, ok := matchTitle(e.Item.Title, f.title); !ok {
 			continue
 		}
 		if f.tag != "" && !store.HasEveryTag(e.Item, []string{f.tag}) {
@@ -44,6 +46,35 @@ func (f filters) apply(entries []store.Entry) []store.Entry {
 		kept = append(kept, e)
 	}
 	return kept
+}
+
+// matchTitle reports whether query's runes appear in title in order, ignoring
+// case, and which of title's runes they landed on. An empty query matches
+// every title and lands on none.
+//
+// Each query rune takes the first title rune after the one the previous rune
+// took. That is not always the placement fzf would underline, since fzf scores
+// gaps, but rows here are never ranked, so the positions only have to show why
+// a row survived, and the leftmost ones always do.
+//
+// Positions count runes, not bytes, and case is folded one rune at a time, so
+// a rune whose lower case encodes to a different length cannot shift them.
+func matchTitle(title, query string) ([]int, bool) {
+	want := []rune(query)
+	if len(want) == 0 {
+		return nil, true
+	}
+	positions := make([]int, 0, len(want))
+	for pos, r := range []rune(title) {
+		if unicode.ToLower(r) != unicode.ToLower(want[len(positions)]) {
+			continue
+		}
+		positions = append(positions, pos)
+		if len(positions) == len(want) {
+			return positions, true
+		}
+	}
+	return nil, false
 }
 
 // describe names the active filters for the footer, so a list that is missing

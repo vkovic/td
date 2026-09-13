@@ -72,7 +72,7 @@ func keyMap() []binding {
 		{keys: []string{"x"}, help: "move the selected item to the trash", short: "delete", rank: 8,
 			run: func(m *Model) tea.Cmd { return m.gate(m.removeItem) }},
 
-		{keys: []string{"/"}, help: "filter by title", short: "filter", rank: 7,
+		{keys: []string{"/"}, help: "filter by title as you type", short: "filter", rank: 7,
 			run: (*Model).startFilter},
 		{keys: []string{"t"}, help: "cycle the tag filter", short: "tag", rank: 10,
 			run: func(m *Model) tea.Cmd { m.cycleTag(); return nil }},

@@ -16,9 +16,10 @@ const (
 	promptFilter
 )
 
-// prompt is the one-line editor that opens over the footer. It is deliberately
-// small: the only text typed into the TUI is a title or a filter, and every
-// other edit goes to $EDITOR.
+// prompt is the one-line editor: the add prompt opens over the footer, and the
+// filter prompt in the header, over the list's name. It is deliberately small:
+// the only text typed into the TUI is a title or a filter, and every other
+// edit goes to $EDITOR.
 type prompt struct {
 	kind  promptKind
 	label string

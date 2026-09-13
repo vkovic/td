@@ -174,6 +174,7 @@ func pickerLabels(m *Model) []string {
 // keyTypes maps the named keys a test presses to their Bubble Tea types.
 var keyTypes = map[string]tea.KeyType{
 	"up": tea.KeyUp, "down": tea.KeyDown, "enter": tea.KeyEnter, "esc": tea.KeyEsc,
+	"backspace": tea.KeyBackspace,
 }
 
 // titles names the loaded listing in display order, so a failure reads as a

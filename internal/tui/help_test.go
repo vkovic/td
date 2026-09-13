@@ -296,7 +296,7 @@ func TestFooterCarriesTheFilterStatusAndFlash(t *testing.T) {
 }
 
 // TestPromptKeepsItsTail: a filter longer than the pane still shows the
-// keystrokes being typed. Trimming the prompt from the right would hide the
+// keystrokes being typed. Trimming the input from the right would hide the
 // cursor and everything approaching it.
 func TestPromptKeepsItsTail(t *testing.T) {
 	s := newStore(t)
@@ -307,14 +307,9 @@ func TestPromptKeepsItsTail(t *testing.T) {
 	typeInto(m, "/", "the quick brown fox jumps over the lazy dog")
 
 	view := ansi.Strip(m.View())
-	var prompt string
-	for _, line := range strings.Split(view, "\n") {
-		if strings.HasPrefix(line, "filter>") {
-			prompt = line
-		}
-	}
-	if prompt == "" {
-		t.Fatalf("no prompt line in the view:\n%s", view)
+	prompt := strings.Split(view, "\n")[0]
+	if !strings.HasPrefix(prompt, "/") {
+		t.Fatalf("the top line is not the filter input:\n%s", view)
 	}
 	if got := ansi.StringWidth(prompt); got > 40 {
 		t.Errorf("the prompt line is %d columns wide, want 40 or fewer: %q", got, prompt)

@@ -91,7 +91,8 @@ watching one store would otherwise drive each other in a loop.
 
 The pane reads from both ends. The top line names the list on screen in bold —
 the project, `global` or `all scopes` — and changes the moment you pick another
-list; a dim rule sits under it, and any warnings under that. Open items start
+list; a title filter takes its place while one is being typed or is set. A dim
+rule sits under it, and any warnings under that. Open items start
 below, the done section sits against the bottom of the list with the
 `── done ──` rule over it, and the status line and key legend hold the last two
 rows whatever the list is doing — a short list leaves the gap in the middle
@@ -102,7 +103,9 @@ a done section under it.
 
 A pane too short for all of that and a row of the list gives up whole lines,
 in order: the rule under the name, then the name, then the key legend, then the
-status line. The list always keeps at least one row.
+status line. While a title filter holds the top line, that line goes last: the
+rule, then the legend, then the status line give way before it. The list always
+keeps at least one row.
 
 When rows are off screen the status line says where they went — `3 above,
 8 between, 5 below`. "Between" is the fold at the rule: rows hidden where the
@@ -130,7 +133,7 @@ shell.
 | `␣`       | mark the selected item done, or reopen it                                             |
 | `p`       | pin the selected item to the top, or unpin it                                         |
 | `x`       | move the selected item to the trash                                                   |
-| `/`       | filter by title                                                                       |
+| `/`       | filter by title as you type                                                           |
 | `t`       | cycle the tag filter                                                                  |
 | `esc`     | clear the filters, or with none set, pick the list to show: global, all, or a project |
 | `i`       | show or hide each item's id                                                           |
@@ -191,7 +194,7 @@ the exception: asking for the tail outright overrides both settings, the way
 
 `esc` opens the list picker: the global list, every scope merged, then every
 project under `~/.td/`, by name and including the ones with nothing open. While
-a title or tag filter is set, `esc` clears the filters instead, and a second
+a title or tag filter is set, `esc` on the list clears both instead, and a second
 `esc` opens the picker. `j` and `k` move, `⏎` picks, `esc` cancels and leaves
 the pane where it was. The cursor opens on the list already showing, so `esc`
 `⏎` changes nothing. That is
@@ -225,6 +228,17 @@ inside its `TITLE` cell, in plain text, rather than in columns of its own:
 In the pane, a title is bold when the item has notes below its frontmatter, open
 or done, so you can see which items hold a body without opening each one with
 `e`. A body of only whitespace counts as none. `td ls` stays plain text.
+
+`/` turns the top line into a filter input over the list's name, and the list
+narrows with every key you type, without waiting for `⏎`. A title matches when
+it holds the typed characters in order, whatever their case — `fdb` finds "fix
+docs build" — in the open and done sections alike, and the characters that
+matched are underlined. Rows keep their usual order; the filter only hides
+them. While the input is open every key types, `j`, `k` and `q` included. `⏎`
+keeps the filter and the top line keeps showing it, `/docs`, until it is
+cleared; `⏎` on an empty input clears it. `/` again reopens the input with the
+query in it. `esc` in the input drops the title filter and brings the name
+back, leaving a `t` tag filter where it was.
 
 Two notes on the filters. They are view state, so a refresh arriving while one
 is open leaves it, and the cursor, where they were. And `t` does not hide done

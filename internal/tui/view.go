@@ -36,10 +36,9 @@ func (m *Model) View() string {
 	for _, line := range m.notice("warning: ", m.warn) {
 		warn = append(warn, m.styles.warning.Render(line))
 	}
-	if m.prompt.open() {
-		// The prompt keeps its tail rather than its head: what you are typing
-		// is at the end of it, and a prompt that stops showing your keystrokes
-		// is worse than one that has scrolled its start away.
+	// The filter prompt is drawn in the header, over the list's name; only the
+	// add prompt still opens down here.
+	if m.prompt.open() && m.prompt.kind != promptFilter {
 		label := m.styles.prompt.Render(m.prompt.label + "> ")
 		tail = append(tail, label+m.fitTail(m.prompt.value+"█", ansi.StringWidth(label)))
 	}
@@ -49,23 +48,25 @@ func (m *Model) View() string {
 
 	// The header and the footer are two lines each, and the footer is built last
 	// because it reports how much of the list did not fit. In a pane too short
-	// for all four and a line of list, the chrome gives way by rank: the
-	// header's rule first, then the list's name, then the legend, then the
-	// status line. A pane showing nothing but chrome says nothing about your
+	// for all four and a line of list, the chrome gives way by rank (see
+	// keptChrome). A pane showing nothing but chrome says nothing about your
 	// todos, and the legend already sheds keys by rank, so shedding whole lines
 	// at the last extremity is the same rule carried one step further. The
-	// footer outlasts the header because it is what counts the rows the window
-	// hides. The warnings are never shed: they say the list itself is wrong.
+	// warnings are never shed: they say the list itself is wrong.
 	chrome := 4
 	if m.height > 0 {
 		chrome = min(max(m.height-len(warn)-len(tail)-1, 0), 4)
 	}
-	headerLines, footerLines := max(chrome-2, 0), min(chrome, 2)
+	kept := m.keptChrome(chrome)
 	body, off := m.body(m.capacity(len(warn) + len(tail) + chrome))
 
 	var b strings.Builder
-	for _, line := range m.header()[:headerLines] {
-		fmt.Fprintln(&b, line)
+	header := m.header()
+	if kept[lineTop] {
+		fmt.Fprintln(&b, header[0])
+	}
+	if kept[lineRule] {
+		fmt.Fprintln(&b, header[1])
 	}
 	for _, line := range warn {
 		fmt.Fprintln(&b, line)
@@ -79,8 +80,12 @@ func (m *Model) View() string {
 	// Rendered a line at a time: Lip Gloss pads every line of a multi-line
 	// block out to the widest one, which would trail the status line with
 	// however many spaces the legend is longer by.
-	for _, line := range strings.Split(m.footer(off), "\n")[:footerLines] {
-		fmt.Fprintln(&b, m.styles.footer.Render(line))
+	footer := strings.Split(m.footer(off), "\n")
+	if kept[lineStatus] {
+		fmt.Fprintln(&b, m.styles.footer.Render(footer[0]))
+	}
+	if kept[lineLegend] {
+		fmt.Fprintln(&b, m.styles.footer.Render(footer[1]))
 	}
 	// No trailing newline. A view that ends with one occupies a line more than
 	// it drew, and a view exactly as tall as the pane then scrolls its own top
@@ -88,21 +93,80 @@ func (m *Model) View() string {
 	return strings.TrimSuffix(b.String(), "\n")
 }
 
+// chromeLine is one of the four lines around the list that a short pane sheds
+// whole.
+type chromeLine int
+
+const (
+	// lineTop heads the pane: the list's name, or the title filter.
+	lineTop chromeLine = iota
+	// lineRule is the rule under lineTop.
+	lineRule
+	// lineStatus is the footer's counts and filter echo.
+	lineStatus
+	// lineLegend is the footer's key summary.
+	lineLegend
+)
+
+// keptChrome picks which n of the four chrome lines a pane has room for.
+//
+// Normally the header's rule goes first, then the list's name, then the
+// legend, then the status line: the footer outlasts the header because it is
+// what counts the rows the window hides.
+//
+// A title filter on the top line changes the order, and it outlasts all three.
+// While the input is open it is where the keystrokes land, and a prompt you
+// cannot see is one you are typing into blind; once kept, it is why rows are
+// missing, and the status line's echo of it is the first thing that line
+// elides.
+func (m *Model) keptChrome(n int) map[chromeLine]bool {
+	order := []chromeLine{lineStatus, lineLegend, lineTop, lineRule}
+	if m.titleFiltering() {
+		order = []chromeLine{lineTop, lineStatus, lineLegend, lineRule}
+	}
+	kept := make(map[chromeLine]bool, n)
+	for _, line := range order[:n] {
+		kept[line] = true
+	}
+	return kept
+}
+
+// titleFiltering reports whether the top line belongs to the title filter:
+// its input is open, or a query it left behind is still narrowing the list.
+func (m *Model) titleFiltering() bool {
+	return m.prompt.kind == promptFilter || m.filters.title != ""
+}
+
 // header is the two lines over the list: the name of the list on screen, and a
 // rule under it. The name is stated nowhere else on the pane, so it heads the
 // screen rather than sharing the status line, where it was the first thing
 // elided whenever the counts needed the room.
 //
-// Only the name is on it for now; the line is where more about the list goes.
+// A title filter takes the name's place, open or kept. It sits where the eye
+// already is when reading the list, rather than on a line above the footer, and
+// what it covers comes back the moment the filter goes.
 func (m *Model) header() []string {
-	name := m.fit(m.scopeLabel())
-	// An unknown width has nothing to span, so the rule spans the name.
+	top := m.styles.header.Render(m.fit(m.scopeLabel()))
+	if m.titleFiltering() {
+		// The query keeps its tail rather than its head: what you are typing
+		// is at the end of it, and an input that stops showing your keystrokes
+		// is worse than one that has scrolled its start away.
+		// The slash is the one the footer echoes the filter with, and the key
+		// that opened it.
+		label := m.styles.prompt.Render("/")
+		query := m.filters.title
+		if m.prompt.kind == promptFilter {
+			query = m.prompt.value + "█"
+		}
+		top = label + m.fitTail(query, ansi.StringWidth(label))
+	}
+	// An unknown width has nothing to span, so the rule spans the top line.
 	width := m.width
 	if width <= 0 {
-		width = ansi.StringWidth(name)
+		width = ansi.StringWidth(top)
 	}
 	return []string{
-		m.styles.header.Render(name),
+		top,
 		m.styles.rule.Render(strings.Repeat("─", width)),
 	}
 }
