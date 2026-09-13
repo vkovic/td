@@ -397,9 +397,9 @@ func TestAnActionSurvivesTheRowsBeingRebuilt(t *testing.T) {
 }
 
 // TestARemovalSurvivesTheRowsBeingRebuilt: the same window, for x. The row
-// stays on screen until the reload drops it either way, so what has to survive
-// a rebuild is where the item is now filed — a listing still calling it active
-// is one an action taken from it would resolve in the wrong area.
+// leaves the loaded listing on the key press, not at the reload, so a rebuild
+// inside that window must not bring it back — a row still on screen is one an
+// action taken from it would resolve in the wrong area.
 func TestARemovalSurvivesTheRowsBeingRebuilt(t *testing.T) {
 	s := newStore(t)
 	save(t, s, item{id: "aaa", title: "delete me", updated: ago(2)})
@@ -410,14 +410,50 @@ func TestARemovalSurvivesTheRowsBeingRebuilt(t *testing.T) {
 	m.applyFilters()
 	m.cursor = indexOf(m, "delete me")
 
-	press(m, "x")
+	cmd := press(m, "x")
 	m.applyFilters()
+	assertRemoved(t, m, "aaa", "on the key press")
+	if !trashed(t, s, "delete-me") {
+		t.Error("the item is not filed under deleted/ after the key press")
+	}
 
+	drain(t, m, cmd)
+	assertRemoved(t, m, "aaa", "after the reload")
+	if !trashed(t, s, "delete-me") {
+		t.Error("the item is not filed under deleted/ after the reload")
+	}
+}
+
+// assertRemoved fails when the item is still in the loaded listing or on screen.
+func assertRemoved(t *testing.T, m *Model, id, when string) {
+	t.Helper()
 	for _, e := range m.Loaded() {
-		if e.Item.ID == "aaa" && e.Ref.Area != store.Deleted {
-			t.Errorf("the loaded listing still files the item under %q, want the trash", e.Ref.Area)
+		if e.Item.ID == id {
+			t.Errorf("%s the loaded listing still holds %q, filed under %q", when, e.Item.Title, e.Ref.Area)
 		}
 	}
+	for _, e := range m.Entries() {
+		if e.Item.ID == id {
+			t.Errorf("%s the pane still shows %q", when, e.Item.Title)
+		}
+	}
+}
+
+// trashed reports whether a file whose name contains slug is in the global
+// scope's deleted/ directory.
+func trashed(t *testing.T, s *store.Store, slug string) bool {
+	t.Helper()
+	deleted := s.Dir(store.Global, store.Deleted)
+	names, err := os.ReadDir(deleted)
+	if err != nil {
+		t.Fatalf("reading %s: %v", deleted, err)
+	}
+	for _, n := range names {
+		if strings.Contains(n.Name(), slug) {
+			return true
+		}
+	}
+	return false
 }
 
 // TestTheCursorLandsOnANeighbourInItsSection: space and x take the row out of

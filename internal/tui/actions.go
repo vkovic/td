@@ -142,12 +142,22 @@ func (m *Model) applied(res task.Result, anchor string) tea.Cmd {
 
 // replace swaps a changed entry into the loaded listing, reorders it, and
 // rebuilds the rows around the item named by anchor.
+//
+// An entry now filed under deleted/ is dropped instead. The pane lists only
+// active items, so the reload would drop it anyway; dropping it on the key
+// press means the row leaves with the cursor, rather than lingering until the
+// epilogue has committed and pushed.
 func (m *Model) replace(e store.Entry, anchor string) {
 	for i := range m.entries {
-		if m.entries[i].Item.ID == e.Item.ID {
-			m.entries[i] = e
-			break
+		if m.entries[i].Item.ID != e.Item.ID {
+			continue
 		}
+		if e.Ref.Area == store.Deleted {
+			m.entries = append(m.entries[:i], m.entries[i+1:]...)
+		} else {
+			m.entries[i] = e
+		}
+		break
 	}
 	store.SortEntries(m.entries)
 	m.rebuild(anchor)
