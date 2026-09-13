@@ -384,6 +384,27 @@ func TestItemEmptyDoneAt(t *testing.T) {
 	}
 }
 
+func TestItemHasBody(t *testing.T) {
+	for _, tc := range []struct {
+		src  string
+		want bool
+	}{
+		{"---\nid: a\ntitle: t\n---\n", false},
+		{"---\nid: a\ntitle: t\n---\n\n", false},
+		{"---\nid: a\ntitle: t\n---\n   \n\t\n  \n", false},
+		{"---\nid: a\ntitle: t\n---\n\nnotes\n", true},
+		{"---\nid: a\ntitle: t\n---\n  indented\n", true},
+	} {
+		it, err := ParseItem([]byte(tc.src))
+		if err != nil {
+			t.Fatalf("ParseItem(%q): %v", tc.src, err)
+		}
+		if got := it.HasBody(); got != tc.want {
+			t.Errorf("ParseItem(%q): HasBody() = %v, want %v", tc.src, got, tc.want)
+		}
+	}
+}
+
 func TestItemParseErrors(t *testing.T) {
 	tests := []struct {
 		name string

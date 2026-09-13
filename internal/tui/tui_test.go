@@ -55,6 +55,7 @@ type item struct {
 	doneAt  *time.Time
 	pinned  bool
 	scope   store.Scope
+	body    string
 }
 
 // save files a fixture item and returns where it landed.
@@ -68,6 +69,7 @@ func save(t *testing.T, s *store.Store, f item) store.Ref {
 		Updated: f.updated,
 		DoneAt:  f.doneAt,
 		Pinned:  f.pinned,
+		Body:    f.body,
 	}
 	if it.Created.IsZero() {
 		it.Created = f.updated
@@ -1415,6 +1417,95 @@ func TestOverdueIgnoresDoneItems(t *testing.T) {
 	m := newModel(t, s)
 	if view := m.View(); strings.Contains(view, m.styles.overdue.Render("due 2026-09-01")) {
 		t.Errorf("a done item is styled overdue:\n%s", view)
+	}
+}
+
+// TestBodyBoldsTitle: a title is bold when its item has notes below the
+// frontmatter, on open and done rows alike, and a body of only whitespace
+// counts as no body at all.
+func TestBodyBoldsTitle(t *testing.T) {
+	s := newStore(t)
+	save(t, s, item{id: "aaa", title: "with notes", updated: ago(1), body: "some notes\n"})
+	save(t, s, item{id: "bbb", title: "no notes", updated: ago(2)})
+	save(t, s, item{id: "ccc", title: "blank notes", updated: ago(3), body: "   \n\n  \n"})
+	save(t, s, item{id: "ddd", title: "finished notes", updated: ago(4), doneAt: done(ago(4)), body: "done notes\n"})
+	save(t, s, item{id: "eee", title: "finished bare", updated: ago(5), doneAt: done(ago(5))})
+
+	m := newModel(t, s)
+	view := m.View()
+
+	title, finished := m.styles.title, m.styles.done
+	for _, c := range []struct {
+		name  string
+		style lipgloss.Style
+		bold  bool
+	}{
+		{"with notes", title, true},
+		{"no notes", title, false},
+		{"blank notes", title, false},
+		{"finished notes", finished, true},
+		{"finished bare", finished, false},
+	} {
+		bold := c.style.Bold(true).Render(c.name)
+		if got := strings.Contains(view, bold); got != c.bold {
+			t.Errorf("%q bold = %v, want %v:\n%q", c.name, got, c.bold, view)
+		}
+		if !c.bold && !strings.Contains(view, c.style.Render(c.name)) {
+			t.Errorf("%q lost its own style:\n%q", c.name, view)
+		}
+	}
+}
+
+// TestBodyBoldFollowsReload: adding or clearing a body on disk changes the
+// title's weight on the next reload, with nothing restarted.
+func TestBodyBoldFollowsReload(t *testing.T) {
+	s := newStore(t)
+	fixture := item{id: "aaa", title: "grows notes", updated: ago(1)}
+	save(t, s, fixture)
+
+	m := newModel(t, s)
+	bold := m.styles.title.Bold(true).Render("grows notes")
+	if strings.Contains(m.View(), bold) {
+		t.Fatalf("a bodiless item is bold before any edit:\n%q", m.View())
+	}
+
+	fixture.body = "now it has notes\n"
+	save(t, s, fixture)
+	if err := m.reload(); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if !strings.Contains(m.View(), bold) {
+		t.Errorf("adding a body did not bold the title:\n%q", m.View())
+	}
+
+	fixture.body = ""
+	save(t, s, fixture)
+	if err := m.reload(); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if strings.Contains(m.View(), bold) {
+		t.Errorf("clearing the body left the title bold:\n%q", m.View())
+	}
+}
+
+// TestBoldTitleFitsWidth: bold adds bytes but no columns, so a bold title is
+// trimmed to the pane the same way a plain one is.
+func TestBoldTitleFitsWidth(t *testing.T) {
+	s := newStore(t)
+	save(t, s, item{id: "aaa", title: "a title long enough that a narrow pane has to trim it",
+		updated: ago(1), body: "notes\n"})
+
+	m := newModel(t, s)
+	m.width = 30
+	row := m.row(m.Entries()[0], false)
+	if w := lipgloss.Width(row); w > m.width {
+		t.Errorf("bold row is %d columns wide, pane is %d: %q", w, m.width, row)
+	}
+	if !strings.Contains(plain(row), "…") {
+		t.Errorf("bold title was not trimmed with an ellipsis: %q", plain(row))
+	}
+	if !strings.Contains(row, "\x1b[1m") {
+		t.Errorf("trimmed title lost its bold: %q", row)
 	}
 }
 

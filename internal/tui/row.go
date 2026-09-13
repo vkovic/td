@@ -108,6 +108,13 @@ func (m *Model) row(e store.Entry, selected bool) string {
 	if e.Item.Done() {
 		style = m.styles.done
 	}
+	// Bold is the only sign on the row that an item holds notes, and it layers
+	// over the done style rather than replacing it, so a finished item keeps its
+	// strikethrough. fitTitle measures the styled string, so the weight costs no
+	// columns.
+	if e.Item.HasBody() {
+		style = style.Bold(true)
+	}
 	texts := append([]string{}, before...)
 	texts = append(texts, m.fitTitle(style.Render(e.Item.Title), before, after))
 	for _, c := range after {

@@ -216,6 +216,10 @@ inside its `TITLE` cell, in plain text, rather than in columns of its own:
       ✓    dotfiles fix zsh prompt                      1d ago
 ```
 
+In the pane, a title is bold when the item has notes below its frontmatter, open
+or done, so you can see which items hold a body without opening each one with
+`e`. A body of only whitespace counts as none. `td ls` stays plain text.
+
 Two notes on the filters. They are view state, so a refresh arriving while one
 is open leaves it, and the cursor, where they were. And `t` does not hide done
 items the way `td ls -t` does: the CLI composes its filter with an explicit

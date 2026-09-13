@@ -88,6 +88,11 @@ type Item struct {
 // Done reports whether the item has been completed.
 func (it *Item) Done() bool { return it.DoneAt != nil }
 
+// HasBody reports whether the item carries notes below its frontmatter. A body
+// of nothing but whitespace counts as none, the same test task.NormalizeBody
+// applies before it stores one.
+func (it *Item) HasBody() bool { return strings.TrimSpace(it.Body) != "" }
+
 // fieldSpec is one frontmatter key td owns: how to read it into the Item, how
 // to write it back, and what the key looks like with nothing in it. The table
 // below is the only place a key is registered — the decoder, the key order and
