@@ -36,8 +36,8 @@ func TestToggleDoneMarksAndReopens(t *testing.T) {
 		t.Error("the done item is not below the rule")
 	}
 
-	// The reload put the item back under the cursor's old neighbour, so find
-	// it again before undoing it.
+	// The cursor stayed among the open rows, on the one above, rather than
+	// following the item below the rule, so step back onto it before undoing it.
 	m.cursor = indexOf(m, "finish me")
 	drain(t, m, press(m, " "))
 	if findTitle(t, m, "finish me").Item.Done() {
@@ -420,25 +420,153 @@ func TestARemovalSurvivesTheRowsBeingRebuilt(t *testing.T) {
 	}
 }
 
-// TestTheCursorSurvivesAnItemBecomingDone: marking the top row done moves it
-// below the rule, and the pane derives where the open rows end and the done
-// rows begin from the listing being ordered that way. Leaving the item among
-// the open ones put the cursor on a row the windowing then declined to draw:
-// in a pane too short for everything, no marker appeared anywhere and the next
-// keystroke looked like it did nothing.
-func TestTheCursorSurvivesAnItemBecomingDone(t *testing.T) {
-	s := newStore(t)
-	for i, title := range []string{"alpha", "bravo", "charlie", "delta", "echo"} {
-		save(t, s, item{id: string(rune('a'+i)) + "aa", title: title, updated: ago(i + 1)})
+// TestTheCursorLandsOnANeighbourInItsSection: space and x take the row out of
+// its section, and the cursor stays behind among the rows you were working
+// through — the next one, or the previous one from the section's last row.
+//
+// Where it lands is checked twice: on the key press, and again after the
+// epilogue's reload, which re-anchors on the selected id and must keep the
+// neighbour rather than pull the cursor back onto the item that moved.
+//
+// The pane is too short for every row, which is also what keeps the older
+// regression covered: a cursor on a row the windowing declines to draw shows no
+// marker anywhere.
+func TestTheCursorLandsOnANeighbourInItsSection(t *testing.T) {
+	cases := []struct {
+		key, on, want string
+	}{
+		{" ", "alpha", "bravo"},
+		{" ", "bravo", "charlie"},
+		{" ", "charlie", "bravo"},
+		{" ", "delta", "echo"},
+		{" ", "echo", "foxtrot"},
+		{" ", "foxtrot", "echo"},
+		{"x", "alpha", "bravo"},
+		{"x", "bravo", "charlie"},
+		{"x", "charlie", "bravo"},
+		{"x", "delta", "echo"},
+		{"x", "echo", "foxtrot"},
+		{"x", "foxtrot", "echo"},
 	}
+	for _, c := range cases {
+		t.Run(keyName(c.key)+" on "+c.on, func(t *testing.T) {
+			s := newStore(t)
+			for i, title := range []string{"alpha", "bravo", "charlie"} {
+				save(t, s, item{id: string(rune('a'+i)) + "aa", title: title, updated: ago(i + 1)})
+			}
+			for i, title := range []string{"delta", "echo", "foxtrot"} {
+				save(t, s, item{id: string(rune('d'+i)) + "aa", title: title,
+					updated: ago(i + 1), doneAt: done(ago(i + 1))})
+			}
+
+			m := newModel(t, s)
+			m.Update(tea.WindowSizeMsg{Width: 60, Height: 5})
+			m.cursor = indexOf(m, c.on)
+
+			cmd := press(m, c.key)
+			assertSelected(t, m, c.want, "on the key press")
+			drain(t, m, cmd)
+			assertSelected(t, m, c.want, "after the reload")
+			if !strings.Contains(m.View(), "❯") {
+				t.Errorf("the cursor is not drawn anywhere:\n%s", m.View())
+			}
+		})
+	}
+}
+
+// TestTheCursorOnARowAloneInItsSection: with no neighbour to land on, space
+// follows the item across the rule — it is all that is left of what you were
+// on — and x hands the cursor to the nearest row on the other side.
+func TestTheCursorOnARowAloneInItsSection(t *testing.T) {
+	cases := []struct {
+		name, key, on, want string
+	}{
+		{"space on the only open row follows it below the rule", " ", "open", "open"},
+		{"space on the only done row follows it above the rule", " ", "done", "done"},
+		{"x on the only open row lands on the first done row", "x", "open", "done"},
+		{"x on the only done row lands on the last open row", "x", "done", "open"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := newStore(t)
+			// The row under test is alone in its section and the other section
+			// holds two, so "nearest" is told apart from "first" or "last".
+			if c.on == "open" {
+				save(t, s, item{id: "aaa", title: "open", updated: ago(3)})
+				save(t, s, item{id: "bbb", title: "done", updated: ago(1), doneAt: done(ago(1))})
+				save(t, s, item{id: "ccc", title: "done earlier", updated: ago(2), doneAt: done(ago(2))})
+			} else {
+				save(t, s, item{id: "aaa", title: "open later", updated: ago(1)})
+				save(t, s, item{id: "bbb", title: "open", updated: ago(2)})
+				save(t, s, item{id: "ccc", title: "done", updated: ago(3), doneAt: done(ago(3))})
+			}
+
+			m := newModel(t, s)
+			m.cursor = indexOf(m, c.on)
+
+			cmd := press(m, c.key)
+			assertSelected(t, m, c.want, "on the key press")
+			drain(t, m, cmd)
+			assertSelected(t, m, c.want, "after the reload")
+		})
+	}
+}
+
+// TestTheCursorAfterRemovingTheLastRow: x on a list of one leaves nothing to
+// land on, and nothing selected once the reload drops the row.
+func TestTheCursorAfterRemovingTheLastRow(t *testing.T) {
+	s := newStore(t)
+	save(t, s, item{id: "aaa", title: "only", updated: ago(1)})
 
 	m := newModel(t, s)
-	m.Update(tea.WindowSizeMsg{Width: 60, Height: 5})
-	m.cursor = indexOf(m, "alpha")
+	drain(t, m, press(m, "x"))
 
-	press(m, " ")
-
-	if !strings.Contains(m.View(), "❯") {
-		t.Errorf("the cursor is not drawn anywhere after the row moved:\n%s", m.View())
+	if e := m.Selected(); e != nil {
+		t.Errorf("the cursor is on %q, want nothing selected in an empty list", e.Item.Title)
 	}
+}
+
+// TestTheCursorNeighbourIsCountedOnScreen: a filter narrows what the neighbour
+// is. The row after the selected one in the loaded listing is hidden, so the
+// cursor skips it for the next row that is on screen.
+func TestTheCursorNeighbourIsCountedOnScreen(t *testing.T) {
+	for _, key := range []string{" ", "x"} {
+		t.Run(keyName(key), func(t *testing.T) {
+			s := newStore(t)
+			save(t, s, item{id: "aaa", title: "work first", updated: ago(1)})
+			save(t, s, item{id: "bbb", title: "home", updated: ago(2)})
+			save(t, s, item{id: "ccc", title: "work second", updated: ago(3)})
+
+			m := newModel(t, s)
+			m.filters.title = "work"
+			m.applyFilters()
+			m.cursor = indexOf(m, "work first")
+
+			cmd := press(m, key)
+			assertSelected(t, m, "work second", "on the key press")
+			drain(t, m, cmd)
+			assertSelected(t, m, "work second", "after the reload")
+		})
+	}
+}
+
+// assertSelected fails when the cursor is not on the row titled want.
+func assertSelected(t *testing.T, m *Model, want, when string) {
+	t.Helper()
+	e := m.Selected()
+	if e == nil {
+		t.Errorf("%s nothing is selected, want %q", when, want)
+		return
+	}
+	if e.Item.Title != want {
+		t.Errorf("%s the cursor is on %q, want %q in %v", when, e.Item.Title, want, titles(m))
+	}
+}
+
+// keyName spells a pressed key for a subtest name, where a bare space vanishes.
+func keyName(key string) string {
+	if key == " " {
+		return "space"
+	}
+	return key
 }

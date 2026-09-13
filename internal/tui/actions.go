@@ -20,6 +20,7 @@ func (m *Model) toggleDone() tea.Cmd {
 	if e == nil {
 		return nil
 	}
+	landing := m.landing(false)
 	res, err := m.tasks.SetDone(task.StatusRequest{
 		Scope: e.Ref.Scope,
 		IDs:   []string{e.Item.ID},
@@ -29,11 +30,15 @@ func (m *Model) toggleDone() tea.Cmd {
 		m.err = err
 		return nil
 	}
-	return m.applied(res)
+	return m.applied(res, landing)
 }
 
 // togglePin pins the selected item, or unpins it: td pin and td unpin, the way
 // toggleDone is td done and td undo.
+//
+// The cursor follows the item rather than landing on a neighbour. A pin
+// reorders a row within its section without taking it out, so the row you
+// were on is still the one you are working on.
 func (m *Model) togglePin() tea.Cmd {
 	e := m.Selected()
 	if e == nil {
@@ -48,7 +53,7 @@ func (m *Model) togglePin() tea.Cmd {
 		m.err = err
 		return nil
 	}
-	return m.applied(res)
+	return m.applied(res, e.Item.ID)
 }
 
 // removeItem moves the selected item to the trash, as td rm does.
@@ -60,16 +65,57 @@ func (m *Model) removeItem() tea.Cmd {
 	if e == nil {
 		return nil
 	}
+	landing := m.landing(true)
 	res, err := m.tasks.Remove(task.MoveRequest{Scope: e.Ref.Scope, IDs: []string{e.Item.ID}})
 	if err != nil {
 		m.err = err
 		return nil
 	}
-	return m.applied(res)
+	return m.applied(res, landing)
 }
 
-// applied puts what the service wrote back into the listing and runs the
-// epilogue.
+// landing names the row the cursor moves to when the selected row is about to
+// leave its section, by being marked done, reopened, or removed.
+//
+// It is the next row in the same section, or the previous one when the
+// selected row is the section's last. Working down a list with space or x then
+// keeps you among the rows you were working through, instead of following the
+// item below the rule or dropping onto whatever slid into its place.
+//
+// A row alone in its section has no neighbour there. An item that stays in
+// the listing is followed, since it is the only thing left of what you were
+// on. An item that leaves it hands the cursor to the nearest row across the
+// rule: the row after it, else the row before.
+//
+// Neighbours are counted in shown, so a filter narrows them to what is on
+// screen. The rows are sorted open before done, so two adjacent rows with the
+// same done state are in the same section.
+func (m *Model) landing(leaves bool) string {
+	sel := m.Selected()
+	if sel == nil {
+		return ""
+	}
+	next, prev := m.cursor+1, m.cursor-1
+	sameSection := func(i int) bool {
+		return i >= 0 && i < len(m.shown) && m.shown[i].Item.Done() == sel.Item.Done()
+	}
+	switch {
+	case sameSection(next):
+		return m.shown[next].Item.ID
+	case sameSection(prev):
+		return m.shown[prev].Item.ID
+	case !leaves:
+		return sel.Item.ID
+	case next < len(m.shown):
+		return m.shown[next].Item.ID
+	case prev >= 0:
+		return m.shown[prev].Item.ID
+	}
+	return ""
+}
+
+// applied puts what the service wrote back into the listing, moves the cursor
+// to the item named by anchor, and runs the epilogue.
 //
 // It has to go into the loaded listing and not just the visible rows. The
 // service resolves the id and works on its own copy of the item, so what the
@@ -83,20 +129,20 @@ func (m *Model) removeItem() tea.Cmd {
 // below the rule, and the windowing in view.go derives the open and done cursor
 // positions from the listing being ordered that way: leaving a done item among
 // the open ones puts the cursor on a row the pane will not draw.
-func (m *Model) applied(res task.Result) tea.Cmd {
+//
+// The cursor moves here, on the key press, and not after the reload. The
+// reload re-anchors on whatever is selected by then, so the row picked here is
+// the row it keeps.
+func (m *Model) applied(res task.Result, anchor string) tea.Cmd {
 	if len(res.Entries) > 0 {
-		m.replace(res.Entries[0])
+		m.replace(res.Entries[0], anchor)
 	}
 	return m.runEpilogue(res.Message)
 }
 
 // replace swaps a changed entry into the loaded listing, reorders it, and
-// rebuilds the rows around the item the cursor was on.
-func (m *Model) replace(e store.Entry) {
-	var anchor string
-	if sel := m.Selected(); sel != nil {
-		anchor = sel.Item.ID
-	}
+// rebuilds the rows around the item named by anchor.
+func (m *Model) replace(e store.Entry, anchor string) {
 	for i := range m.entries {
 		if m.entries[i].Item.ID == e.Item.ID {
 			m.entries[i] = e

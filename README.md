@@ -138,6 +138,11 @@ shell.
 | `?`       | show this help                                                                        |
 | `q`       | quit                                                                                  |
 
+After `␣` or `x` the cursor stays in the section the row was in, open or done,
+and moves to the next row on screen, or to the previous one from the section's
+last row. On a row alone in its section, `␣` follows the item across the rule and
+`x` moves to the nearest row on the other side.
+
 ### Referring to an item by its id
 
 `i` puts each item's id on its row, ahead of the title, and `i` again takes it
