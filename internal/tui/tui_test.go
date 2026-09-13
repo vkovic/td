@@ -406,14 +406,14 @@ func stack(t *testing.T, s *store.Store, opens, dones int) {
 func drawn(view string) []string { return strings.Split(plain(view), "\n") }
 
 // visibleRows is the index in m.shown of every item row among some rendered
-// lines, in the order they were drawn. A row is the only line carrying a
-// checkbox, which is what tells one from the rule, the gap and the chrome.
+// lines, in the order they were drawn. A row is the only line carrying a check
+// glyph, which is what tells one from the rule, the gap and the chrome.
 func visibleRows(t *testing.T, m *Model, rendered []string) []int {
 	t.Helper()
 	var out []int
 	for _, line := range rendered {
 		line = plain(line)
-		if !strings.Contains(line, "[ ]") && !strings.Contains(line, "[x]") {
+		if !strings.Contains(line, openGlyph) && !strings.Contains(line, doneGlyph) {
 			continue
 		}
 		found := -1
@@ -1179,8 +1179,8 @@ func TestRowsAreUnfittedBeforeTheFirstSize(t *testing.T) {
 }
 
 // TestMergedViewLabelsEachScope: the merged view mixes lists, so a row has to
-// say which list it came from — the same thing td ls --all does with its SCOPE
-// column. A single-scope view says it once, in the status line, and does not
+// say which list it came from — the same thing td ls --all does in its TITLE
+// cell. A single-scope view says it once, in the status line, and does not
 // repeat it on every row.
 func TestMergedViewLabelsEachScope(t *testing.T) {
 	s := newStore(t)
@@ -1208,6 +1208,53 @@ func TestMergedViewLabelsEachScope(t *testing.T) {
 			t.Errorf("the global row carries no scope: %s", line)
 		case strings.Contains(line, "second item") && !strings.Contains(line, "acme"):
 			t.Errorf("the acme row carries no scope: %s", line)
+		}
+	}
+}
+
+// TestRowPrefix: every row opens with the check glyph, then the pin slot, then
+// the scope label when the view is merged — the prefix td ls puts in its TITLE
+// cell. The glyphs are styled, a dim ring for open and a green check for done.
+func TestRowPrefix(t *testing.T) {
+	s := newStore(t)
+	save(t, s, item{id: "aaa", title: "pinned item", updated: ago(1), pinned: true, scope: store.Scope("acme")})
+	save(t, s, item{id: "bbb", title: "plain item", updated: ago(2)})
+	save(t, s, item{id: "ccc", title: "finished item", updated: ago(3), doneAt: done(ago(3))})
+
+	m := newModel(t, s)
+	rows := func() map[string]string {
+		out := map[string]string{}
+		for _, e := range m.Entries() {
+			out[e.Item.Title] = m.row(e, false)
+		}
+		return out
+	}
+
+	single := rows()
+	for title, want := range map[string]string{
+		"plain item":    "○    plain item",
+		"finished item": "✓    finished item",
+	} {
+		if got := strings.TrimLeft(plain(single[title]), " "); !strings.HasPrefix(got, want) {
+			t.Errorf("single-scope row = %q, want it to start %q", got, want)
+		}
+	}
+	if raw := single["plain item"]; !strings.Contains(raw, m.styles.open.Render(openGlyph)) {
+		t.Errorf("the open glyph is not styled dim: %q", raw)
+	}
+	if raw := single["finished item"]; !strings.Contains(raw, m.styles.check.Render(doneGlyph)) {
+		t.Errorf("the done glyph is not styled green: %q", raw)
+	}
+
+	pick(t, m, "all scopes")
+	merged := rows()
+	for title, want := range map[string]string{
+		"pinned item":   "○ " + pinGlyph + " acme pinned item",
+		"plain item":    "○    global plain item",
+		"finished item": "✓    global finished item",
+	} {
+		if got := strings.TrimLeft(plain(merged[title]), " "); !strings.HasPrefix(got, want) {
+			t.Errorf("merged row = %q, want it to start %q", got, want)
 		}
 	}
 }

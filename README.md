@@ -105,7 +105,7 @@ drops the item total first, then elides the list's name, and only then gives up
 its own tail.
 
 `p` pins the selected item and `p` again unpins it. A pinned item heads its
-section with 📌 ahead of its title: first among the open items, and first among
+section with 📌 after its check mark: first among the open items, and first among
 the done ones once it is finished. Pinned items keep the usual order among
 themselves. A pin does not touch `updated`, so the row's age stays what it was.
 Every row keeps the pin's two columns open whether it is pinned or not, so the
@@ -143,8 +143,8 @@ window shares them — a whole store's listing can read `64q`. The tail turns ov
 every millisecond, so it is the part that tells two items apart.
 
 ```
-❯ [ ] s3r    fuzzy search                              #cli  3d
-  [ ] sxx    ids for items for quick reference                5d
+❯ s3r ○    fuzzy search                              #cli  3d
+  sxx ○    ids for items for quick reference                5d
 ```
 
 Those three characters are what you type back. Every command that takes an id —
@@ -193,9 +193,21 @@ starting `td` again opens on the marker's scope: nothing about the pick is
 written down, so the pane and `td ls` never disagree about what "this project"
 means.
 
-The merged view labels every row with the list it came from, the way
-`td ls --all` adds a `SCOPE` column, since that is the one view where two rows
-next to each other can belong to different lists.
+The merged view labels every row with the list it came from, since that is the
+one view where two rows next to each other can belong to different lists.
+
+Every row, in the pane and in `td ls`, starts with the same prefix: a check
+mark — a dim `○` while the item is open, a green `✓` once it is done — then the
+pin slot, then the list's name when the view spans every scope. The name sits at
+its natural width, and global items read `global`. `td ls` carries the prefix
+inside its `TITLE` cell, in plain text, rather than in columns of its own:
+
+```
+❯ s3r ○ 📌 td push to claude agent - e.g. @AGENT-123   10h ago
+  sxx ○    global buy milk                              3d ago
+── done ──
+      ✓    dotfiles fix zsh prompt                      1d ago
+```
 
 Two notes on the filters. They are view state, so a refresh arriving while one
 is open leaves it, and the cursor, where they were. And `t` does not hide done

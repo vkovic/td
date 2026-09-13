@@ -141,12 +141,43 @@ func TestLsAllMergesScopes(t *testing.T) {
 		t.Errorf("scopes = %v, want both global and acme reported", scopes)
 	}
 
-	// The human table gains a scope column only under --all.
-	if out := h.mustRun("ls", "--all"); !strings.Contains(out, "SCOPE") {
-		t.Errorf("td ls --all table has no scope column:\n%s", out)
+	// The human table labels each title with its scope only under --all, and
+	// never as a column of its own.
+	out := h.mustRun("ls", "--all")
+	for _, want := range []string{openGlyph + "    global Global item", openGlyph + "    acme Acme item"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("td ls --all table has no %q:\n%s", want, out)
+		}
 	}
-	if out := h.mustRun("ls"); strings.Contains(out, "SCOPE") {
-		t.Errorf("td ls table has a scope column:\n%s", out)
+	if strings.Contains(out, "SCOPE") {
+		t.Errorf("td ls --all table has a scope column:\n%s", out)
+	}
+	if out := h.mustRun("ls"); !strings.Contains(out, openGlyph+"    Global item") {
+		t.Errorf("td ls table labels its titles with a scope:\n%s", out)
+	}
+}
+
+// TestLsTitleCellCarriesThePrefix: done, pinned and scope head the TITLE cell,
+// in the pane's order, and none of them is a column.
+func TestLsTitleCellCarriesThePrefix(t *testing.T) {
+	h := newHarness(t)
+	finished := h.mutation("add", "Finished item", "-g").Items[0].ID
+	h.mustRun("done", finished)
+	h.mustRun("add", "Pinned item", "-p", "acme", "--pin")
+
+	out := h.mustRun("ls", "--all", "--done")
+	for _, col := range []string{"SCOPE", "STATUS"} {
+		if strings.Contains(out, col) {
+			t.Errorf("td ls --all --done carries a %s column:\n%s", col, out)
+		}
+	}
+	for _, want := range []string{
+		openGlyph + " " + pinGlyph + " acme Pinned item",
+		doneGlyph + "    global Finished item",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("td ls --all --done has no %q:\n%s", want, out)
+		}
 	}
 }
 

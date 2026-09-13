@@ -50,8 +50,8 @@ func TestIDToggleShowsTheShortID(t *testing.T) {
 		if strings.TrimSpace(row) == "" || strings.Contains(row, doneRule) {
 			continue
 		}
-		if !strings.Contains(row, "] ") {
-			t.Fatalf("row has no box to anchor on:\n%s", row)
+		if !strings.Contains(row, openGlyph) && !strings.Contains(row, doneGlyph) {
+			t.Fatalf("row has no check glyph to anchor on:\n%s", row)
 		}
 	}
 	got := plain(listText(m))
@@ -70,8 +70,8 @@ func TestIDToggleShowsTheShortID(t *testing.T) {
 	}
 }
 
-// TestIDTagSitsBeforeTheTitle: the tag is a label on the row, between the done
-// box and the title, not another trailing field beside the due date.
+// TestIDTagSitsBeforeTheTitle: the tag is a label on the row, between the cursor
+// and the check glyph, not another trailing field beside the due date.
 func TestIDTagSitsBeforeTheTitle(t *testing.T) {
 	s := newStore(t)
 	save(t, s, item{id: "64qmbs3r", title: "fuzzy search", tags: []string{"cli"},
@@ -82,9 +82,10 @@ func TestIDTagSitsBeforeTheTitle(t *testing.T) {
 	press(m, "i")
 
 	line := plain(m.row(m.Entries()[0], true))
-	box, tag, title := strings.Index(line, "[ ]"), strings.Index(line, "s3r"), strings.Index(line, "fuzzy")
-	if !(box < tag && tag < title) {
-		t.Errorf("the tag is not between the box and the title:\n%s", line)
+	cursor, tag, check, title := strings.Index(line, "❯"), strings.Index(line, "s3r"),
+		strings.Index(line, openGlyph), strings.Index(line, "fuzzy")
+	if !(cursor < tag && tag < check && check < title) {
+		t.Errorf("the tag is not between the cursor and the check glyph:\n%s", line)
 	}
 }
 

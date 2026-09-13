@@ -14,7 +14,15 @@ import (
 // says nothing that tells it apart from the row above it.
 const minTitle = 8
 
-// pinGlyph marks a pinned row, directly ahead of its title.
+// openGlyph and doneGlyph head every row, saying whether the item is done. Each
+// is one column wide, so spent measures the row exactly; the brackets they
+// replaced spent three columns saying the same thing.
+const (
+	openGlyph = "○"
+	doneGlyph = "✓"
+)
+
+// pinGlyph marks a pinned row, directly after its check glyph.
 const pinGlyph = "📌"
 
 // pinBlank holds the glyph's slot open on a row that is not pinned, so titles
@@ -34,28 +42,26 @@ type cell struct {
 	drop int
 }
 
-// row renders one item: the cursor, a done marker, the pin slot, the title, its
-// tags, its due date and how long ago it was updated. Empty fields take no space
-// at all, so a list with no tags carries no gap where the tags would be. The pin
-// slot is the exception, blank rather than absent, because it sits ahead of the
-// title and a gap there would stagger the titles.
+// row renders one item: the cursor, the id tag when shown, a check glyph, the
+// pin slot, the scope label in the merged view, the title, its tags, its due date
+// and how long ago it was updated. Empty fields take no space at all, so a list
+// with no tags carries no gap where the tags would be. The pin slot is the
+// exception, blank rather than absent, because it sits ahead of the title and a
+// gap there would stagger the titles.
 //
 // The title is the first cell to give way, and below a stub of a title the
 // trailing cells start going too. Nothing is left to the terminal to clip: a
 // clipped row loses its right-hand end with nothing on screen to say so, which
 // is how a 40-column pane came to show "due 2026-" and no age at all.
 func (m *Model) row(e store.Entry, selected bool) string {
-	marker := "  "
+	// One column: the space that joins every cell is what separates the cursor
+	// from the rest of the row.
+	marker := " "
 	if selected {
-		marker = m.styles.cursor.Render("❯ ")
+		marker = m.styles.cursor.Render("❯")
 	}
 
-	box := "[ ]"
-	if e.Item.Done() {
-		box = "[x]"
-	}
-
-	before := []string{marker, box}
+	before := []string{marker}
 	// The id goes ahead of the title, the one place it reads as a label on the
 	// row rather than as another trailing field competing with the due date. It
 	// is not a droppable cell: a pane too narrow for it is a pane where the tag
@@ -63,17 +69,23 @@ func (m *Model) row(e store.Entry, selected bool) string {
 	if m.showIDs {
 		before = append(before, m.styles.id.Render(store.ShortID(e.Item.ID)))
 	}
-	// Only the merged view needs the label: in a single-scope view every row
-	// would carry the same one, which is what the status line already says.
-	// It sits before the title, where td ls --all puts its SCOPE column.
-	if m.view.merged {
-		before = append(before, m.styles.scope.Render(e.Ref.Scope.String()))
+	check := m.styles.open.Render(openGlyph)
+	if e.Item.Done() {
+		check = m.styles.check.Render(doneGlyph)
 	}
 	pin := pinBlank
 	if e.Item.Pinned {
 		pin = pinGlyph
 	}
-	before = append(before, pin)
+	before = append(before, check, pin)
+	// Only the merged view needs the label: in a single-scope view every row
+	// would carry the same one, which is what the status line already says.
+	// It follows the pin, at its natural width, the same prefix td ls --all
+	// puts in its TITLE cell. Padding it into a column was declined: the width
+	// would be set by the longest project name on screen.
+	if m.view.merged {
+		before = append(before, m.styles.scope.Render(e.Ref.Scope.String()))
+	}
 
 	var after []cell
 	if len(e.Item.Tags) > 0 {

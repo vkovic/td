@@ -74,9 +74,11 @@ already pinned, in the same single commit.
 first, with `created` and then `id` breaking a tie so the order is stable run to
 run. Pinned items are ordered among themselves by those same keys. `--done`
 includes done items, which sort after the open ones: pinned first again, then
-most recently completed first. In the table, a pinned title carries 📌 ahead of
-it, and every other title a blank of the same width.
-`--all` merges every scope and adds a scope column. `-t` narrows to items
+most recently completed first. In the table, the `TITLE` cell starts with a
+prefix: `○` for an open item or `✓` for a done one, then 📌 for a pinned item or
+a blank of the same width, then the scope name under `--all`, then the title —
+`○ 📌 acme Ship it`. There is no status or scope column.
+`--all` merges every scope. `-t` narrows to items
 carrying **every** tag given, matched case-insensitively, so several `-t` flags
 narrow the list rather than widening it. Aliased as `td list`.
 

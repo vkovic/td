@@ -46,7 +46,7 @@ func newLsCmd(a *app) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&f.done, "done", false, "include done items")
-	cmd.Flags().BoolVar(&f.all, "all", false, "merge every scope, with a scope column")
+	cmd.Flags().BoolVar(&f.all, "all", false, "merge every scope, labelling each title with its scope")
 	cmd.Flags().StringArrayVarP(&f.tags, "tag", "t", nil, "only items carrying every tag given, repeatable")
 	return cmd
 }
@@ -112,12 +112,12 @@ func filterItems(entries []store.Entry, withDone bool, tags []string) []store.En
 
 // lsTable renders a listing for a person. Columns that would be empty for every
 // row are left out, so a list with no due dates does not carry a blank column.
+// Whether an item is done, pinned, and which scope it is in are not columns: they
+// head the TITLE cell, as they head a row in the pane (see lsTitle).
 func lsTable(entries []store.Entry, f lsFlags) output.Table {
 	var (
-		showScope = f.all
-		showDone  = f.done
-		showDue   bool
-		showTags  bool
+		showDue  bool
+		showTags bool
 	)
 	for _, e := range entries {
 		if e.Item.Due != nil {
@@ -129,12 +129,6 @@ func lsTable(entries []store.Entry, f lsFlags) output.Table {
 	}
 
 	table := output.Table{Header: []string{"ID"}}
-	if showScope {
-		table.Header = append(table.Header, "SCOPE")
-	}
-	if showDone {
-		table.Header = append(table.Header, "STATUS")
-	}
 	if showDue {
 		table.Header = append(table.Header, "DUE")
 	}
@@ -145,16 +139,6 @@ func lsTable(entries []store.Entry, f lsFlags) output.Table {
 
 	for _, e := range entries {
 		row := []string{e.Item.ID}
-		if showScope {
-			row = append(row, e.Ref.Scope.String())
-		}
-		if showDone {
-			status := ""
-			if e.Item.Done() {
-				status = "done"
-			}
-			row = append(row, status)
-		}
 		if showDue {
 			due := ""
 			if e.Item.Due != nil {
@@ -165,16 +149,39 @@ func lsTable(entries []store.Entry, f lsFlags) output.Table {
 		if showTags {
 			row = append(row, strings.Join(e.Item.Tags, ","))
 		}
-		table.Rows = append(table.Rows, append(row, pinSlot(e.Item)+e.Item.Title))
+		table.Rows = append(table.Rows, append(row, lsTitle(e, f.all)))
 	}
 	return table
 }
 
+// openGlyph and doneGlyph head a title in the table, as they head a row in the
+// pane. They stay plain text, like the rest of the table: td ls is read by
+// Claude through /td as often as by a person, and color codes are noise there.
+const (
+	openGlyph = "○"
+	doneGlyph = "✓"
+)
+
 // pinGlyph marks a pinned item's title, as it does on the pane's row.
 const pinGlyph = "📌"
 
-// pinSlot is what heads a title in the table: the glyph for a pinned item, and
-// the same width of blank for any other, so every title starts in one column.
+// lsTitle is the TITLE cell: the check glyph, the pin slot, the scope when the
+// listing spans every scope, then the title. It is the pane row's prefix, so the
+// two surfaces read an item the same way.
+func lsTitle(e store.Entry, withScope bool) string {
+	check := openGlyph
+	if e.Item.Done() {
+		check = doneGlyph
+	}
+	title := check + " " + pinSlot(e.Item)
+	if withScope {
+		title += e.Ref.Scope.String() + " "
+	}
+	return title + e.Item.Title
+}
+
+// pinSlot is the glyph for a pinned item and the same width of blank for any
+// other, so every title starts in one column.
 //
 // The slot is part of the title cell rather than a column of its own. tabwriter
 // pads by rune count, and the glyph is one rune drawn two columns wide, so as a
