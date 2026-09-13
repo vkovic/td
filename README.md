@@ -141,7 +141,8 @@ shell.
 After `␣` or `x` the cursor stays in the section the row was in, open or done,
 and moves to the next row on screen, or to the previous one from the section's
 last row. On a row alone in its section, `␣` follows the item across the rule and
-`x` moves to the nearest row on the other side.
+`x` moves to the nearest row on the other side. Either way the row changes as
+soon as you press the key, without waiting for the commit and push.
 
 ### Referring to an item by its id
 
