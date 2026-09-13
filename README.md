@@ -89,20 +89,26 @@ mid-session appears without you doing anything. A refresh only ever re-reads:
 it never records a hand edit, sweeps, commits or pushes, because two panes
 watching one store would otherwise drive each other in a loop.
 
-The pane reads from both ends. Open items start at the top, the done section
-sits against the bottom of the list with the `── done ──` rule over it, and the
-status line and key legend hold the last two rows whatever the list is doing —
-a short list leaves the gap in the middle rather than floating the footer up
-the pane. Each section scrolls on its own, and open is served first: a listing
-too long for the pane spends its height on open items and keeps the rule, which
-is the one thing on screen saying there is a done section under it.
+The pane reads from both ends. The top line names the list on screen in bold —
+the project, `global` or `all scopes` — and changes the moment `g` picks another
+list; a dim rule sits under it, and any warnings under that. Open items start
+below, the done section sits against the bottom of the list with the
+`── done ──` rule over it, and the status line and key legend hold the last two
+rows whatever the list is doing — a short list leaves the gap in the middle
+rather than floating the footer up the pane. Each section scrolls on its own,
+and open is served first: a listing too long for the pane spends its height on
+open items and keeps the rule, which is the one thing on screen saying there is
+a done section under it.
+
+A pane too short for all of that and a row of the list gives up whole lines,
+in order: the rule under the name, then the name, then the key legend, then the
+status line. The list always keeps at least one row.
 
 When rows are off screen the status line says where they went — `3 above,
 8 between, 5 below`. "Between" is the fold at the rule: rows hidden where the
 open section stops and the done one starts, which is neither end of the list.
 Those counts are what makes the window honest, so a line too wide for the pane
-drops the item total first, then elides the list's name, and only then gives up
-its own tail.
+drops the item total first, and only then gives up its own tail.
 
 `p` pins the selected item and `p` again unpins it. A pinned item heads its
 section with 📌 after its check mark: first among the open items, and first among

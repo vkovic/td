@@ -8,6 +8,7 @@ import (
 // test can force a color profile and see the styling in the rendered string.
 type styles struct {
 	title    lipgloss.Style
+	header   lipgloss.Style
 	done     lipgloss.Style
 	open     lipgloss.Style
 	check    lipgloss.Style
@@ -34,6 +35,7 @@ func newStyles(r *lipgloss.Renderer) styles {
 	dim := lipgloss.AdaptiveColor{Light: "244", Dark: "244"}
 	return styles{
 		title:    r.NewStyle(),
+		header:   r.NewStyle().Bold(true),
 		done:     r.NewStyle().Foreground(dim).Strikethrough(true),
 		open:     r.NewStyle().Foreground(dim),
 		check:    r.NewStyle().Foreground(lipgloss.Color("2")),

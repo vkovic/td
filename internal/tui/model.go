@@ -35,8 +35,8 @@ type scopeView struct {
 	scope store.Scope
 }
 
-// label names the list this view shows, in the words both the footer and the
-// picker use for it.
+// label names the list this view shows, in the words both the pane's header and
+// the picker use for it.
 func (v scopeView) label() string {
 	if v.merged {
 		return "all scopes"

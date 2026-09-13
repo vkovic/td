@@ -230,9 +230,11 @@ func TestOverlayNamesTheEditor(t *testing.T) {
 	}
 }
 
-// TestFooterCarriesTheScopeFilterStatusAndFlash: the status line is the only
-// place any of the four is stated.
-func TestFooterCarriesTheScopeFilterStatusAndFlash(t *testing.T) {
+// TestFooterCarriesTheFilterStatusAndFlash: the status line is the only place
+// any of the three is stated. The list's name is not among them: it heads the
+// pane, and stating it twice would spend the status line's width on something
+// already on screen.
+func TestFooterCarriesTheFilterStatusAndFlash(t *testing.T) {
 	s := newStore(t)
 	save(t, s, item{id: "aaa", title: "write the docs", tags: []string{"docs"}, updated: ago(1)})
 	save(t, s, item{id: "bbb", title: "ship it", updated: ago(2)})
@@ -250,10 +252,13 @@ func TestFooterCarriesTheScopeFilterStatusAndFlash(t *testing.T) {
 	m.flashUntil = clock.Add(time.Minute)
 
 	footer := m.footer(hidden{})
-	for _, want := range []string{"all scopes", "1 open, 1 total", "filtered /docs", "committed", externalFlash} {
+	for _, want := range []string{"1 open, 1 total", "filtered /docs", "committed", externalFlash} {
 		if !strings.Contains(footer, want) {
 			t.Errorf("the footer is missing %q:\n%s", want, footer)
 		}
+	}
+	if strings.Contains(footer, "all scopes") {
+		t.Errorf("the footer still names the list:\n%s", footer)
 	}
 	if !strings.Contains(footer, legend(0)) {
 		t.Errorf("the footer does not carry the key legend:\n%s", footer)

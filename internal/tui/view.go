@@ -7,8 +7,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// View renders the whole screen, top to bottom: the warnings, the open rows,
-// the blank gap, the done section, the prompt and error lines, and the footer.
+// View renders the whole screen, top to bottom: the header, the warnings, the
+// open rows, the blank gap, the done section, the prompt and error lines, and
+// the footer.
 //
 // Everything is bounded by the pane in both directions. The list is windowed
 // to whatever height the chrome leaves it, because a pane that renders more
@@ -31,9 +32,9 @@ func (m *Model) View() string {
 		return m.helpView()
 	}
 
-	var head, tail []string
+	var warn, tail []string
 	for _, line := range m.notice("warning: ", m.warn) {
-		head = append(head, m.styles.warning.Render(line))
+		warn = append(warn, m.styles.warning.Render(line))
 	}
 	if m.prompt.open() {
 		// The prompt keeps its tail rather than its head: what you are typing
@@ -46,20 +47,27 @@ func (m *Model) View() string {
 		tail = append(tail, m.styles.warning.Render(line))
 	}
 
-	// The footer is two lines, and is built last because it reports how much of
-	// the list did not fit. In a pane too short for both it and a line of list,
-	// it is the footer that gives way — the legend first, then the status
-	// line. A pane showing nothing but chrome says nothing about your todos,
-	// and the legend already sheds keys by rank, so shedding itself at the
-	// last extremity is the same rule carried one step further.
-	footerLines := 2
-	for footerLines > 0 && m.height > 0 && m.height-len(head)-len(tail)-footerLines < 1 {
-		footerLines--
+	// The header and the footer are two lines each, and the footer is built last
+	// because it reports how much of the list did not fit. In a pane too short
+	// for all four and a line of list, the chrome gives way by rank: the
+	// header's rule first, then the list's name, then the legend, then the
+	// status line. A pane showing nothing but chrome says nothing about your
+	// todos, and the legend already sheds keys by rank, so shedding whole lines
+	// at the last extremity is the same rule carried one step further. The
+	// footer outlasts the header because it is what counts the rows the window
+	// hides. The warnings are never shed: they say the list itself is wrong.
+	chrome := 4
+	if m.height > 0 {
+		chrome = min(max(m.height-len(warn)-len(tail)-1, 0), 4)
 	}
-	body, off := m.body(m.capacity(len(head) + len(tail) + footerLines))
+	headerLines, footerLines := max(chrome-2, 0), min(chrome, 2)
+	body, off := m.body(m.capacity(len(warn) + len(tail) + chrome))
 
 	var b strings.Builder
-	for _, line := range head {
+	for _, line := range m.header()[:headerLines] {
+		fmt.Fprintln(&b, line)
+	}
+	for _, line := range warn {
 		fmt.Fprintln(&b, line)
 	}
 	for _, line := range body {
@@ -79,6 +87,29 @@ func (m *Model) View() string {
 	// row off — which is the cursor, since the list opens at the newest item.
 	return strings.TrimSuffix(b.String(), "\n")
 }
+
+// header is the two lines over the list: the name of the list on screen, and a
+// rule under it. The name is stated nowhere else on the pane, so it heads the
+// screen rather than sharing the status line, where it was the first thing
+// elided whenever the counts needed the room.
+//
+// Only the name is on it for now; the line is where more about the list goes.
+func (m *Model) header() []string {
+	name := m.fit(m.scopeLabel())
+	// An unknown width has nothing to span, so the rule spans the name.
+	width := m.width
+	if width <= 0 {
+		width = ansi.StringWidth(name)
+	}
+	return []string{
+		m.styles.header.Render(name),
+		m.styles.rule.Render(strings.Repeat("─", width)),
+	}
+}
+
+// scopeLabel names the list on screen: the project or global name for a single
+// scope, and "all scopes" for the merged view.
+func (m *Model) scopeLabel() string { return m.view.label() }
 
 // capacity is how many lines the list itself may occupy: the pane, less the
 // chrome above and below it. Zero means the height is not known yet — Bubble

@@ -476,7 +476,7 @@ func TestTheFooterSitsOnTheLastLineOfThePane(t *testing.T) {
 		// line alone once the legend has been shed.
 		want := "q quit"
 		if height == 2 {
-			want = "global ·"
+			want = "open, "
 		}
 		if last := got[len(got)-1]; !strings.Contains(last, want) {
 			t.Errorf("at height %d the last line is %q, want the footer's %q", height, last, want)
@@ -502,15 +502,16 @@ func TestTheDoneSectionSitsAtTheBottomOfTheList(t *testing.T) {
 	// Counting back from the footer, which holds the last two lines: the done
 	// rows, the rule above them, and the gap above that.
 	last := len(got) - 1
-	for i, want := range map[int]string{last - 1: "global ·", last - 2: "done 01", last - 3: "done 00", last - 4: doneRule} {
+	for i, want := range map[int]string{last - 1: "open, ", last - 2: "done 01", last - 3: "done 00", last - 4: doneRule} {
 		if !strings.Contains(got[i], want) {
 			t.Errorf("line %d is %q, want %q", i, got[i], want)
 		}
 	}
-	if !strings.Contains(got[0], "open 00") || !strings.Contains(got[1], "open 01") {
-		t.Errorf("the open rows are not at the top of the pane:\n%s", strings.Join(got, "\n"))
+	// The header holds the first two lines, so the open rows start on the third.
+	if !strings.Contains(got[2], "open 00") || !strings.Contains(got[3], "open 01") {
+		t.Errorf("the open rows are not at the top of the list:\n%s", strings.Join(got, "\n"))
 	}
-	for i := 2; i <= last-5; i++ {
+	for i := 4; i <= last-5; i++ {
 		if strings.TrimSpace(got[i]) != "" {
 			t.Errorf("line %d is %q, want a blank line of the gap", i, got[i])
 		}
@@ -533,16 +534,16 @@ func TestThePromptSitsBetweenTheDoneSectionAndTheFooter(t *testing.T) {
 		t.Fatalf("the view is %d lines in a 12-row pane:\n%s", len(got), strings.Join(got, "\n"))
 	}
 	last := len(got) - 1
-	for i, want := range map[int]string{last: "q quit", last - 1: "global ·", last - 2: "add>", last - 3: "done 00", last - 4: doneRule} {
+	for i, want := range map[int]string{last: "q quit", last - 1: "open, ", last - 2: "add>", last - 3: "done 00", last - 4: doneRule} {
 		if !strings.Contains(got[i], want) {
 			t.Errorf("line %d is %q, want %q", i, got[i], want)
 		}
 	}
 }
 
-// TestAWarningKeepsTheListBetweenItAndTheFooter: the head grows down from the
-// top and the footer stays on the bottom, so the warning costs the list a line
-// and moves nothing else.
+// TestAWarningKeepsTheListBetweenItAndTheFooter: the warnings grow down from
+// under the header and the footer stays on the bottom, so the warning costs the
+// list a line and moves nothing else — the header included.
 func TestAWarningKeepsTheListBetweenItAndTheFooter(t *testing.T) {
 	s := newStore(t)
 	stack(t, s, 2, 1)
@@ -557,14 +558,17 @@ func TestAWarningKeepsTheListBetweenItAndTheFooter(t *testing.T) {
 	if len(got) != 12 {
 		t.Fatalf("the view is %d lines in a 12-row pane:\n%s", len(got), strings.Join(got, "\n"))
 	}
-	if !strings.HasPrefix(got[0], "warning: ") {
-		t.Errorf("the first line is %q, want the warning", got[0])
+	if got[0] != "global" {
+		t.Errorf("the first line is %q, want the header's name", got[0])
 	}
-	if !strings.Contains(got[1], "open 00") {
-		t.Errorf("the list does not start under the warning: %q", got[1])
+	if !strings.HasPrefix(got[2], "warning: ") {
+		t.Errorf("the line under the header is %q, want the warning", got[2])
+	}
+	if !strings.Contains(got[3], "open 00") {
+		t.Errorf("the list does not start under the warning: %q", got[3])
 	}
 	last := len(got) - 1
-	for i, want := range map[int]string{last: "q quit", last - 1: "global ·", last - 2: "done 00", last - 3: doneRule} {
+	for i, want := range map[int]string{last: "q quit", last - 1: "open, ", last - 2: "done 00", last - 3: doneRule} {
 		if !strings.Contains(got[i], want) {
 			t.Errorf("line %d is %q, want %q", i, got[i], want)
 		}
@@ -582,13 +586,13 @@ func TestTheEmptyListKeepsItsMessageAtTheTop(t *testing.T) {
 	if len(got) != 10 {
 		t.Fatalf("the view is %d lines in a 10-row pane:\n%s", len(got), strings.Join(got, "\n"))
 	}
-	if !strings.Contains(got[0], "Nothing here yet.") {
-		t.Errorf("the first line is %q, want the empty message", got[0])
+	if !strings.Contains(got[2], "Nothing here yet.") {
+		t.Errorf("the line under the header is %q, want the empty message", got[2])
 	}
 	if !strings.Contains(got[len(got)-1], "q quit") {
 		t.Errorf("the last line is %q, want the legend", got[len(got)-1])
 	}
-	for i := 1; i <= len(got)-3; i++ {
+	for i := 3; i <= len(got)-3; i++ {
 		if strings.TrimSpace(got[i]) != "" {
 			t.Errorf("line %d is %q, want a blank line", i, got[i])
 		}
@@ -604,19 +608,20 @@ func TestOverflowGivesTheHeightToOpenFirst(t *testing.T) {
 	stack(t, s, 20, 5)
 
 	m := newModel(t, s)
-	// Ten lines of list: nine open rows and the rule.
-	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+	// Ten lines of list between the header and the footer: nine open rows and
+	// the rule.
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 14})
 	got := drawn(m.View())
-	if len(got) != 12 {
-		t.Fatalf("the view is %d lines in a 12-row pane:\n%s", len(got), strings.Join(got, "\n"))
+	if len(got) != 14 {
+		t.Fatalf("the view is %d lines in a 14-row pane:\n%s", len(got), strings.Join(got, "\n"))
 	}
 	for i := range 9 {
-		if want := fmt.Sprintf("open %02d", i); !strings.Contains(got[i], want) {
-			t.Errorf("line %d is %q, want %q", i, got[i], want)
+		if want := fmt.Sprintf("open %02d", i); !strings.Contains(got[i+2], want) {
+			t.Errorf("line %d is %q, want %q", i+2, got[i+2], want)
 		}
 	}
-	if !strings.Contains(got[9], doneRule) {
-		t.Errorf("line 9 is %q, want the done rule", got[9])
+	if !strings.Contains(got[11], doneRule) {
+		t.Errorf("line 11 is %q, want the done rule", got[11])
 	}
 	if strings.Contains(plain(m.View()), "done 0") {
 		t.Errorf("a done row is drawn in a pane with no room for one:\n%s", strings.Join(got, "\n"))
@@ -637,7 +642,8 @@ func TestTheDoneSectionGrowsBackForTheCursor(t *testing.T) {
 	stack(t, s, 20, 5)
 
 	m := newModel(t, s)
-	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+	// Ten lines of list between the header and the footer.
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 14})
 	if got := plain(m.View()); strings.Contains(got, "done 0") {
 		t.Fatalf("a done row is on screen before the cursor reaches one:\n%s", got)
 	}
@@ -646,20 +652,20 @@ func TestTheDoneSectionGrowsBackForTheCursor(t *testing.T) {
 	// one.
 	m.cursor = 20
 	got := drawn(m.View())
-	if !strings.Contains(got[9], "done 00") {
+	if !strings.Contains(got[11], "done 00") {
 		t.Errorf("the cursor's own row is not on screen:\n%s", strings.Join(got, "\n"))
 	}
-	if !strings.Contains(got[8], doneRule) {
-		t.Errorf("line 8 is %q, want the rule above the done row", got[8])
+	if !strings.Contains(got[10], doneRule) {
+		t.Errorf("line 10 is %q, want the rule above the done row", got[10])
 	}
-	if !strings.Contains(got[7], "open 07") {
-		t.Errorf("open did not give up exactly one row: line 7 is %q", got[7])
+	if !strings.Contains(got[9], "open 07") {
+		t.Errorf("open did not give up exactly one row: line 9 is %q", got[9])
 	}
 
 	// Back out again, and open has its line back.
 	m.cursor = 0
 	got = drawn(m.View())
-	if !strings.Contains(got[8], "open 08") || !strings.Contains(got[9], doneRule) {
+	if !strings.Contains(got[10], "open 08") || !strings.Contains(got[11], doneRule) {
 		t.Errorf("open did not take back the line the cursor borrowed:\n%s", strings.Join(got, "\n"))
 	}
 
@@ -669,8 +675,8 @@ func TestTheDoneSectionGrowsBackForTheCursor(t *testing.T) {
 		for range len(m.Entries()) + 2 {
 			press(m, key)
 			view := m.View()
-			if n := len(drawn(view)); n > 12 {
-				t.Fatalf("%s: the view is %d lines in a 12-row pane", key, n)
+			if n := len(drawn(view)); n > 14 {
+				t.Fatalf("%s: the view is %d lines in a 14-row pane", key, n)
 			}
 			selected := strings.TrimSpace(plain(m.row(m.Entries()[m.cursor], true)))
 			if !strings.Contains(plain(view), selected) {
@@ -689,9 +695,9 @@ func TestTheFooterSaysWhichSideOfTheRuleRowsAreOn(t *testing.T) {
 	stack(t, s, 20, 5)
 
 	m := newModel(t, s)
-	// Ten lines of list against twenty-six of listing, so both windows have
-	// something to hide.
-	m.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+	// Ten lines of list between the header and the footer, against twenty-six
+	// of listing, so both windows have something to hide.
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 14})
 
 	// The cursor at the top: nine open rows and the rule, so the rest of the
 	// open section is in the fold and the whole done section is under it.
@@ -712,7 +718,7 @@ func TestTheFooterSaysWhichSideOfTheRuleRowsAreOn(t *testing.T) {
 
 	// A fold nothing is drawn on either side of is not a fold. With the whole
 	// open section squeezed out, its rows are above what is on screen.
-	m.Update(tea.WindowSizeMsg{Width: 100, Height: 3})
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 5})
 	if got := plain(m.View()); !strings.Contains(got, "· 20 above, 4 below") {
 		t.Errorf("rows squeezed out of a section are not counted on its own side:\n%s", got)
 	}
@@ -722,7 +728,7 @@ func TestTheFooterSaysWhichSideOfTheRuleRowsAreOn(t *testing.T) {
 		s := newStore(t)
 		stack(t, s, 20, 0)
 		m := newModel(t, s)
-		m.Update(tea.WindowSizeMsg{Width: 100, Height: 5})
+		m.Update(tea.WindowSizeMsg{Width: 100, Height: 7})
 		if got := plain(m.View()); !strings.Contains(got, "· 17 below") || strings.Contains(got, "between") {
 			t.Errorf("a list with nothing done reports a fold:\n%s", got)
 		}
@@ -788,29 +794,29 @@ func TestTheSplitLadder(t *testing.T) {
 	}
 }
 
-// TestAFourLinePaneShowsARowOfEachSection: the smallest pane that can show
-// both sections, which is the ladder's broken cell seen from the outside. The
-// rule took the line the open row needed, so a pane beside a full-height
-// Claude Code session showed the done marker and one done item and nothing of
-// what was still to do.
-func TestAFourLinePaneShowsARowOfEachSection(t *testing.T) {
+// TestASixLinePaneShowsARowOfEachSection: the smallest pane that can show both
+// sections under the whole header, which is the ladder's broken cell seen from
+// the outside. The rule took the line the open row needed, so a pane beside a
+// full-height Claude Code session showed the done marker and one done item and
+// nothing of what was still to do.
+func TestASixLinePaneShowsARowOfEachSection(t *testing.T) {
 	s := newStore(t)
 	stack(t, s, 20, 5)
 
 	m := newModel(t, s)
-	// Four rows: two of footer, two of list.
-	m.Update(tea.WindowSizeMsg{Width: 60, Height: 4})
+	// Six rows: two of header, two of footer, two of list.
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 6})
 	m.cursor = 20 // the first done item
 
 	got := drawn(m.View())
-	if len(got) != 4 {
-		t.Fatalf("the view is %d lines in a 4-row pane:\n%s", len(got), strings.Join(got, "\n"))
+	if len(got) != 6 {
+		t.Fatalf("the view is %d lines in a 6-row pane:\n%s", len(got), strings.Join(got, "\n"))
 	}
-	if !strings.Contains(got[0], "open 00") {
-		t.Errorf("the first line is %q, want the open row", got[0])
+	if !strings.Contains(got[2], "open 00") {
+		t.Errorf("the first line of the list is %q, want the open row", got[2])
 	}
-	if !strings.Contains(got[1], "done 00") {
-		t.Errorf("the second line is %q, want the row the cursor is on", got[1])
+	if !strings.Contains(got[3], "done 00") {
+		t.Errorf("the second line of the list is %q, want the row the cursor is on", got[3])
 	}
 	if strings.Contains(plain(m.View()), doneRule) {
 		t.Errorf("the rule took a line one of the rows needed:\n%s", strings.Join(got, "\n"))
@@ -835,16 +841,17 @@ func TestEachSectionScrollsOnItsOwn(t *testing.T) {
 	if m.cursor != 12 {
 		t.Fatalf("the walk ended on row %d, want the first done item", m.cursor)
 	}
-	was := drawn(m.View())[0]
+	// The list starts under the header's two lines.
+	was := drawn(m.View())[2]
 	if !strings.Contains(was, "open ") {
-		t.Fatalf("the first line is %q, want an open row", was)
+		t.Fatalf("the first line of the list is %q, want an open row", was)
 	}
 
 	// On down the done section. The open window was not asked to move, so it
 	// shows what it showed.
 	for range len(m.Entries()) - 13 {
 		press(m, "j")
-		if got := drawn(m.View())[0]; got != was {
+		if got := drawn(m.View())[2]; got != was {
 			t.Fatalf("with the cursor on row %d the open window starts at %q, want %q", m.cursor, got, was)
 		}
 	}
@@ -935,6 +942,91 @@ func TestTheViewFitsEveryHeightDownToOne(t *testing.T) {
 	}
 }
 
+// TestTheHeaderNamesTheListOnScreen: the list's name heads the pane over a
+// rule, the list starts under both, and the name is the header's alone — the
+// status line no longer opens with it. The overlays keep their own headings.
+func TestTheHeaderNamesTheListOnScreen(t *testing.T) {
+	s := newStore(t)
+	stack(t, s, 2, 1)
+
+	m := newModel(t, s)
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+	got := drawn(m.View())
+	if got[0] != "global" {
+		t.Errorf("the first line is %q, want the list's name", got[0])
+	}
+	if want := strings.Repeat("─", 60); got[1] != want {
+		t.Errorf("the second line is %q, want a rule across the pane", got[1])
+	}
+	if !strings.Contains(got[2], "open 00") {
+		t.Errorf("the list does not start on the third line: %q", got[2])
+	}
+	if status := got[len(got)-2]; strings.Contains(status, "global") {
+		t.Errorf("the status line still names the list: %q", status)
+	}
+
+	// g changes the list, and the header with it.
+	pick(t, m, "all scopes")
+	if got := drawn(m.View())[0]; got != "all scopes" {
+		t.Errorf("after picking the merged view the header is %q", got)
+	}
+	showing(m, "td")
+	if got := drawn(m.View())[0]; got != "td" {
+		t.Errorf("on a project list the header is %q, want the project", got)
+	}
+
+	// A project name has no length limit, and the header is still one line.
+	showing(m, strings.Repeat("x", 80))
+	if got := drawn(m.View())[0]; ansi.StringWidth(got) != 60 || !strings.HasSuffix(got, "…") {
+		t.Errorf("a long name was not elided to the pane: %q", got)
+	}
+
+	press(m, "?")
+	if got := drawn(m.View())[0]; got != "td — keys" {
+		t.Errorf("the help overlay opens on %q, want its own heading", got)
+	}
+	press(m, "?")
+	press(m, "g")
+	if got := drawn(m.View())[0]; got != "td — lists" {
+		t.Errorf("the picker opens on %q, want its own heading", got)
+	}
+}
+
+// TestTheHeaderGivesWayBeforeTheFooter: in a pane too short for all the chrome
+// and a row of list, whole lines go in rank order — the header's rule, then
+// the name, then the legend, then the status line — and the list keeps its row
+// throughout. The footer outlasts the header because it counts what the window
+// hides.
+func TestTheHeaderGivesWayBeforeTheFooter(t *testing.T) {
+	s := newStore(t)
+	for i := range 30 {
+		save(t, s, item{id: fmt.Sprintf("a%02d", i), title: fmt.Sprintf("item number %02d", i), updated: ago(i + 1)})
+	}
+
+	m := newModel(t, s)
+	rule := strings.Repeat("─", 60)
+	for height, want := range map[int][]string{
+		1: {"item number 00"},
+		2: {"item number 00", "open, "},
+		3: {"item number 00", "open, ", "q quit"},
+		4: {"global", "item number 00", "open, ", "q quit"},
+		5: {"global", rule, "item number 00", "open, ", "q quit"},
+		6: {"global", rule, "item number 00", "item number 01", "open, ", "q quit"},
+	} {
+		m.Update(tea.WindowSizeMsg{Width: 60, Height: height})
+		got := drawn(m.View())
+		if len(got) != len(want) {
+			t.Errorf("at height %d the view is %d lines, want %d:\n%s", height, len(got), len(want), strings.Join(got, "\n"))
+			continue
+		}
+		for i := range want {
+			if !strings.Contains(got[i], want[i]) {
+				t.Errorf("at height %d line %d is %q, want %q", height, i, got[i], want[i])
+			}
+		}
+	}
+}
+
 // statusLine is the first of the footer's two lines, rendered for a model
 // whose list is showing the given rows off screen.
 func statusLine(m *Model, off hidden) string {
@@ -969,69 +1061,32 @@ func TestTheStatusLineShedsTheTotalBeforeTheCounts(t *testing.T) {
 	// reports and the widest the line has to carry.
 	off := hidden{above: 7, mid: 4, below: 10}
 	const counts = "7 above, 4 between, 10 below"
+	const whole = "20 open, 30 total · " + counts
 
+	// The list's name used to open the line and was the first thing elided for
+	// the counts. It heads the pane now, so no name costs the line a column.
 	t.Run("at sixty columns", func(t *testing.T) {
 		m.width = 60
-		for _, c := range []struct {
-			name  string
-			label string
-			total bool
-		}{
-			{name: "td", label: "td", total: true},
-			{name: "acme-web", label: "acme-web", total: true},
-			{name: "nine-char", label: "nine-char", total: true},
-			{name: "", label: "all scopes"},
-			{name: "internal-a", label: "internal-a"},
-			{name: "platform-api", label: "platform-api"},
-		} {
-			showing(m, c.name)
-			line := statusLine(m, off)
-			if got := ansi.StringWidth(line); got > m.width {
-				t.Errorf("%s: the status line is %d columns wide: %q", c.label, got, line)
-			}
-			if !strings.Contains(line, counts) {
-				t.Errorf("%s: the counts did not survive: %q", c.label, line)
-			}
-			if !strings.HasPrefix(line, c.label+" · ") {
-				t.Errorf("%s: the label did not survive whole: %q", c.label, line)
-			}
-			if strings.Contains(line, "total") != c.total {
-				t.Errorf("%s: total present is %t, want %t: %q", c.label, !c.total, c.total, line)
+		for _, name := range []string{"td", "", "internal-a", "a-longer-project-name"} {
+			showing(m, name)
+			if line := statusLine(m, off); line != whole {
+				t.Errorf("%q: the status line is %q, want %q", name, line, whole)
 			}
 		}
 	})
 
-	// A name too long for the line even without the total is elided to what is
-	// actually free, not to the floor: trimming to the floor whenever the name
-	// is a column too long would leave the rest of the line blank to buy
-	// nothing.
-	t.Run("a label too long for the line", func(t *testing.T) {
+	// A line that has to shed: the total goes, and only what is still too wide
+	// after that is truncated — from the right, past the counts.
+	t.Run("a line too wide for the pane", func(t *testing.T) {
 		m.width = 60
-		showing(m, "a-longer-project-name") // 21 columns
+		m.status = "committed and pushed to origin"
+		defer func() { m.status = "" }()
 		line := statusLine(m, off)
-		if !strings.HasPrefix(line, "a-longer-project-n… · ") {
-			t.Errorf("the label was not elided to the room available: %q", line)
-		}
-		if !strings.Contains(line, counts) || strings.Contains(line, "total") {
-			t.Errorf("the label gave way after the total, not before it: %q", line)
+		if !strings.HasPrefix(line, "20 open · "+counts) || strings.Contains(line, "total") {
+			t.Errorf("the total did not give way before the counts: %q", line)
 		}
 		if got := ansi.StringWidth(line); got != 60 {
 			t.Errorf("the status line is %d columns wide, want the width used: %q", got, line)
-		}
-	})
-
-	// And the floor, below which the whole line truncates as it always did. A
-	// label cut past this says nothing that tells one list from another.
-	t.Run("a pane too narrow for the floor", func(t *testing.T) {
-		m.width = 40
-		showing(m, "a-longer-project-name")
-		line := statusLine(m, off)
-		label, _, _ := strings.Cut(line, " · ")
-		if ansi.StringWidth(label) != minScopeLabel {
-			t.Errorf("the label is %d columns, want the floor of %d: %q", ansi.StringWidth(label), minScopeLabel, line)
-		}
-		if got := ansi.StringWidth(line); got > m.width {
-			t.Errorf("the status line is %d columns wide: %q", got, line)
 		}
 	})
 
@@ -1039,10 +1094,8 @@ func TestTheStatusLineShedsTheTotalBeforeTheCounts(t *testing.T) {
 	// zero is an unknown pane, not a pane with no room in it.
 	t.Run("before the first size", func(t *testing.T) {
 		m.width = 0
-		showing(m, "platform-api")
-		line := statusLine(m, off)
-		if want := "platform-api · 20 open, 30 total · " + counts; line != want {
-			t.Errorf("the status line is %q, want %q", line, want)
+		if line := statusLine(m, off); line != whole {
+			t.Errorf("the status line is %q, want %q", line, whole)
 		}
 	})
 }
@@ -1517,17 +1570,21 @@ func TestRelative(t *testing.T) {
 	}
 }
 
-// TestFooterNamesTheScopeAndCounts: the footer is the only place the scope is
-// stated, so a pane left open beside a project says which list it is showing.
-func TestFooterNamesTheScopeAndCounts(t *testing.T) {
+// TestTheHeaderNamesTheScopeAndTheFooterCounts: the header is the only place
+// the scope is stated, so a pane left open beside a project says which list it
+// is showing, and the footer carries the counts.
+func TestTheHeaderNamesTheScopeAndTheFooterCounts(t *testing.T) {
 	s := newStore(t)
 	save(t, s, item{id: "aaa", title: "open", updated: ago(1)})
 	save(t, s, item{id: "bbb", title: "shut", updated: ago(2), doneAt: done(ago(2))})
 
 	m := newModel(t, s)
+	if got := plain(m.header()[0]); got != "global" {
+		t.Errorf("the header names %q, want the scope", got)
+	}
 	footer := m.footer(hidden{})
-	if !strings.Contains(footer, "global") {
-		t.Errorf("the footer does not name the scope: %q", footer)
+	if strings.Contains(footer, "global") {
+		t.Errorf("the footer still names the scope: %q", footer)
 	}
 	if !strings.Contains(footer, "1 open, 2 total") {
 		t.Errorf("the footer counts wrong: %q", footer)
@@ -1547,7 +1604,7 @@ func TestProjectScopeListsOnlyThatProject(t *testing.T) {
 	if got, want := strings.Join(titles(m), ","), "project item"; got != want {
 		t.Errorf("the project listing is %s, want %s", got, want)
 	}
-	if !strings.Contains(m.footer(hidden{}), "acme") {
-		t.Errorf("the footer does not name the project: %q", m.footer(hidden{}))
+	if got := plain(m.header()[0]); got != "acme" {
+		t.Errorf("the header names %q, want the project", got)
 	}
 }
