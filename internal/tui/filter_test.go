@@ -327,9 +327,10 @@ func TestEveryKeyTypesIntoTheFilter(t *testing.T) {
 	}
 }
 
-// TestTheFilterHeadsThePane: the input covers the list's name while open, the
-// kept query stays there after enter, the footer echoes it throughout, and the
-// name comes back once the title filter goes.
+// TestTheFilterHeadsThePane: the input takes the blank top line while open,
+// the kept query stays there after enter, the footer echoes it throughout, the
+// rule under it keeps naming the list, and the line is blank again once the
+// title filter goes.
 func TestTheFilterHeadsThePane(t *testing.T) {
 	m := newModel(t, tagged(t))
 	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
@@ -338,6 +339,9 @@ func TestTheFilterHeadsThePane(t *testing.T) {
 	got := drawn(m.View())
 	if got[0] != "/docs█" {
 		t.Errorf("with the input open the top line is %q, want /docs█", got[0])
+	}
+	if want := "── global " + strings.Repeat("─", 50); got[1] != want {
+		t.Errorf("with the input open the rule is %q, want %q", got[1], want)
 	}
 	if status := got[len(got)-2]; !strings.Contains(status, "· filtered /docs") {
 		t.Errorf("the status line does not echo the filter while typing: %q", status)
@@ -353,8 +357,8 @@ func TestTheFilterHeadsThePane(t *testing.T) {
 	}
 
 	press(m, "esc")
-	if got := drawn(m.View())[0]; got != "global" {
-		t.Errorf("after clearing the filter the top line is %q, want the list's name", got)
+	if got := drawn(m.View())[0]; got != "" {
+		t.Errorf("after clearing the filter the top line is %q, want it blank", got)
 	}
 
 	// Enter on an emptied input is a cleared filter, not a kept empty one.
@@ -365,7 +369,7 @@ func TestTheFilterHeadsThePane(t *testing.T) {
 		press(m, "backspace")
 	}
 	press(m, "enter")
-	if m.filters.title != "" || drawn(m.View())[0] != "global" {
+	if m.filters.title != "" || drawn(m.View())[0] != "" {
 		t.Errorf("enter on an empty query left %q and the top line %q", m.filters.title, drawn(m.View())[0])
 	}
 }
@@ -428,7 +432,7 @@ func TestTheFilterLineGivesWayLast(t *testing.T) {
 	for i := range 30 {
 		save(t, s, item{id: fmt.Sprintf("a%02d", i), title: fmt.Sprintf("item number %02d", i), updated: ago(i + 1)})
 	}
-	rule := strings.Repeat("─", 60)
+	rule := "── global " + strings.Repeat("─", 50)
 
 	for _, kept := range []bool{false, true} {
 		m := newModel(t, s)

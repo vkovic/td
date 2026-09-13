@@ -89,21 +89,21 @@ mid-session appears without you doing anything. A refresh only ever re-reads:
 it never records a hand edit, sweeps, commits or pushes, because two panes
 watching one store would otherwise drive each other in a loop.
 
-The pane reads from both ends. The top line names the list on screen in bold —
-the project, `global` or `all scopes` — and changes the moment you pick another
-list; a title filter takes its place while one is being typed or is set. A dim
-rule sits under it, and any warnings under that. Open items start
-below, the done section sits against the bottom of the list with the
-`── done ──` rule over it, and the status line and key legend hold the last two
-rows whatever the list is doing — a short list leaves the gap in the middle
-rather than floating the footer up the pane. Each section scrolls on its own,
-and open is served first: a listing too long for the pane spends its height on
-open items and keeps the rule, which is the one thing on screen saying there is
-a done section under it.
+The pane reads from both ends. The top line is blank, and holds a title filter
+while one is being typed or is set. Under it a dim rule names the list on
+screen — `── td ──`, `── global ──` or `── all scopes ──`, run across the pane —
+and changes the moment you pick another list; any warnings sit under that. Open
+items start below, the done section sits against the bottom of the list with a
+`── done ──` rule over it, run across the pane the same way, and the status line
+and key legend hold the last two rows whatever the list is doing — a short list
+leaves the gap in the middle rather than floating the footer up the pane. Each
+section scrolls on its own, and open is served first: a listing too long for the
+pane spends its height on open items and keeps the rule, which is the one thing
+on screen saying there is a done section under it.
 
 A pane too short for all of that and a row of the list gives up whole lines,
-in order: the rule under the name, then the name, then the key legend, then the
-status line. While a title filter holds the top line, that line goes last: the
+in order: the rule naming the list, then the top line, then the key legend, then
+the status line. While a title filter holds the top line, that line goes last: the
 rule, then the legend, then the status line give way before it. The list always
 keeps at least one row.
 

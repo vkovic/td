@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -412,6 +413,11 @@ func stack(t *testing.T, s *store.Store, opens, dones int) {
 // trimming helpers would hide the one thing these tests are about.
 func drawn(view string) []string { return strings.Split(plain(view), "\n") }
 
+// doneRule is the done section's rule at its natural width. The pane runs it
+// out to the width, so a drawn line holding it is the rule at any width wide
+// enough to show the label whole.
+var doneRule = labelRule(doneLabel, 0)
+
 // visibleRows is the index in m.shown of every item row among some rendered
 // lines, in the order they were drawn. A row is the only line carrying a check
 // glyph, which is what tells one from the rule, the gap and the chrome.
@@ -565,8 +571,8 @@ func TestAWarningKeepsTheListBetweenItAndTheFooter(t *testing.T) {
 	if len(got) != 12 {
 		t.Fatalf("the view is %d lines in a 12-row pane:\n%s", len(got), strings.Join(got, "\n"))
 	}
-	if got[0] != "global" {
-		t.Errorf("the first line is %q, want the header's name", got[0])
+	if got[0] != "" || !strings.HasPrefix(got[1], "── global ") {
+		t.Errorf("the header is %q, %q, want a blank line over the list's rule", got[0], got[1])
 	}
 	if !strings.HasPrefix(got[2], "warning: ") {
 		t.Errorf("the line under the header is %q, want the warning", got[2])
@@ -633,9 +639,10 @@ func TestOverflowGivesTheHeightToOpenFirst(t *testing.T) {
 	if strings.Contains(plain(m.View()), "done 0") {
 		t.Errorf("a done row is drawn in a pane with no room for one:\n%s", strings.Join(got, "\n"))
 	}
-	// And nothing is padded: an overflowing list area is already full.
+	// And nothing is padded: an overflowing list area is already full. The
+	// header's top line is blank by design, so the search starts under it.
 	for i, line := range got {
-		if strings.TrimSpace(line) == "" {
+		if i > 0 && strings.TrimSpace(line) == "" {
 			t.Errorf("line %d is blank, want no gap while rows are hidden:\n%s", i, strings.Join(got, "\n"))
 		}
 	}
@@ -949,9 +956,10 @@ func TestTheViewFitsEveryHeightDownToOne(t *testing.T) {
 	}
 }
 
-// TestTheHeaderNamesTheListOnScreen: the list's name heads the pane over a
+// TestTheHeaderNamesTheListOnScreen: the list's name rides the rule under a
+// blank top line, "── name ──" run across the pane and styled like the done
 // rule, the list starts under both, and the name is the header's alone — the
-// status line no longer opens with it. The overlays keep their own headings.
+// status line does not open with it. The overlays keep their own headings.
 func TestTheHeaderNamesTheListOnScreen(t *testing.T) {
 	s := newStore(t)
 	stack(t, s, 2, 1)
@@ -959,11 +967,15 @@ func TestTheHeaderNamesTheListOnScreen(t *testing.T) {
 	m := newModel(t, s)
 	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
 	got := drawn(m.View())
-	if got[0] != "global" {
-		t.Errorf("the first line is %q, want the list's name", got[0])
+	if got[0] != "" {
+		t.Errorf("the first line is %q, want it blank", got[0])
 	}
-	if want := strings.Repeat("─", 60); got[1] != want {
-		t.Errorf("the second line is %q, want a rule across the pane", got[1])
+	want := "── global " + strings.Repeat("─", 50)
+	if got[1] != want {
+		t.Errorf("the second line is %q, want %q", got[1], want)
+	}
+	if rule := m.header()[1]; rule != m.styles.rule.Render(want) {
+		t.Errorf("the header's rule is styled %q, want it styled like the done rule", rule)
 	}
 	if !strings.Contains(got[2], "open 00") {
 		t.Errorf("the list does not start on the third line: %q", got[2])
@@ -974,17 +986,18 @@ func TestTheHeaderNamesTheListOnScreen(t *testing.T) {
 
 	// A pick changes the list, and the header with it.
 	pick(t, m, "all scopes")
-	if got := drawn(m.View())[0]; got != "all scopes" {
-		t.Errorf("after picking the merged view the header is %q", got)
+	if got, want := drawn(m.View())[1], "── all scopes "+strings.Repeat("─", 46); got != want {
+		t.Errorf("after picking the merged view the rule is %q, want %q", got, want)
 	}
 	showing(m, "td")
-	if got := drawn(m.View())[0]; got != "td" {
-		t.Errorf("on a project list the header is %q, want the project", got)
+	if got, want := drawn(m.View())[1], "── td "+strings.Repeat("─", 54); got != want {
+		t.Errorf("on a project list the rule is %q, want %q", got, want)
 	}
 
-	// A project name has no length limit, and the header is still one line.
+	// A project name has no length limit, and the rule is still one line that
+	// opens like a rule.
 	showing(m, strings.Repeat("x", 80))
-	if got := drawn(m.View())[0]; ansi.StringWidth(got) != 60 || !strings.HasSuffix(got, "…") {
+	if got := drawn(m.View())[1]; ansi.StringWidth(got) != 60 || !strings.HasPrefix(got, "── x") || !strings.HasSuffix(got, "…") {
 		t.Errorf("a long name was not elided to the pane: %q", got)
 	}
 
@@ -1001,9 +1014,9 @@ func TestTheHeaderNamesTheListOnScreen(t *testing.T) {
 
 // TestTheHeaderGivesWayBeforeTheFooter: in a pane too short for all the chrome
 // and a row of list, whole lines go in rank order — the header's rule, then
-// the name, then the legend, then the status line — and the list keeps its row
-// throughout. The footer outlasts the header because it counts what the window
-// hides.
+// the top line, then the legend, then the status line — and the list keeps its
+// row throughout. The footer outlasts the header because it counts what the
+// window hides.
 func TestTheHeaderGivesWayBeforeTheFooter(t *testing.T) {
 	s := newStore(t)
 	for i := range 30 {
@@ -1011,14 +1024,16 @@ func TestTheHeaderGivesWayBeforeTheFooter(t *testing.T) {
 	}
 
 	m := newModel(t, s)
-	rule := strings.Repeat("─", 60)
+	rule := "── global " + strings.Repeat("─", 50)
+	// The top line is blank, which every line contains; the line counts are
+	// what place it.
 	for height, want := range map[int][]string{
 		1: {"item number 00"},
 		2: {"item number 00", "open, "},
 		3: {"item number 00", "open, ", "q quit"},
-		4: {"global", "item number 00", "open, ", "q quit"},
-		5: {"global", rule, "item number 00", "open, ", "q quit"},
-		6: {"global", rule, "item number 00", "item number 01", "open, ", "q quit"},
+		4: {"", "item number 00", "open, ", "q quit"},
+		5: {"", rule, "item number 00", "open, ", "q quit"},
+		6: {"", rule, "item number 00", "item number 01", "open, ", "q quit"},
 	} {
 		m.Update(tea.WindowSizeMsg{Width: 60, Height: height})
 		got := drawn(m.View())
@@ -1031,6 +1046,25 @@ func TestTheHeaderGivesWayBeforeTheFooter(t *testing.T) {
 				t.Errorf("at height %d line %d is %q, want %q", height, i, got[i], want[i])
 			}
 		}
+	}
+}
+
+// TestTheDoneRuleRunsAcrossThePane: the done rule is drawn like the header's,
+// "── done ──" run out to the width, and at its natural width until the pane
+// has said how wide it is.
+func TestTheDoneRuleRunsAcrossThePane(t *testing.T) {
+	s := newStore(t)
+	stack(t, s, 2, 1)
+
+	m := newModel(t, s)
+	if !slices.Contains(drawn(m.View()), "── done ──") {
+		t.Errorf("before a size arrived no line is the natural-width rule:\n%s", plain(m.View()))
+	}
+
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
+	want := "── done " + strings.Repeat("─", 52)
+	if got := drawn(m.View()); !slices.Contains(got, want) {
+		t.Errorf("no line is %q:\n%s", want, strings.Join(got, "\n"))
 	}
 }
 
@@ -1674,9 +1708,10 @@ func TestTheHeaderNamesTheScopeAndTheFooterCounts(t *testing.T) {
 	save(t, s, item{id: "aaa", title: "open", updated: ago(1)})
 	save(t, s, item{id: "bbb", title: "shut", updated: ago(2), doneAt: done(ago(2))})
 
+	// No size has arrived, so the rule stops at its natural width.
 	m := newModel(t, s)
-	if got := plain(m.header()[0]); got != "global" {
-		t.Errorf("the header names %q, want the scope", got)
+	if got := plain(m.header()[1]); got != "── global ──" {
+		t.Errorf("the header's rule is %q, want it naming the scope", got)
 	}
 	footer := m.footer(hidden{})
 	if strings.Contains(footer, "global") {
@@ -1700,7 +1735,7 @@ func TestProjectScopeListsOnlyThatProject(t *testing.T) {
 	if got, want := strings.Join(titles(m), ","), "project item"; got != want {
 		t.Errorf("the project listing is %s, want %s", got, want)
 	}
-	if got := plain(m.header()[0]); got != "acme" {
-		t.Errorf("the header names %q, want the project", got)
+	if got := plain(m.header()[1]); got != "── acme ──" {
+		t.Errorf("the header's rule is %q, want it naming the project", got)
 	}
 }

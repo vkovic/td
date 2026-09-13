@@ -8,7 +8,6 @@ import (
 // test can force a color profile and see the styling in the rendered string.
 type styles struct {
 	title    lipgloss.Style
-	header   lipgloss.Style
 	done     lipgloss.Style
 	open     lipgloss.Style
 	check    lipgloss.Style
@@ -35,7 +34,6 @@ func newStyles(r *lipgloss.Renderer) styles {
 	dim := lipgloss.AdaptiveColor{Light: "244", Dark: "244"}
 	return styles{
 		title:    r.NewStyle(),
-		header:   r.NewStyle().Bold(true),
 		done:     r.NewStyle().Foreground(dim).Strikethrough(true),
 		open:     r.NewStyle().Foreground(dim),
 		check:    r.NewStyle().Foreground(lipgloss.Color("2")),
@@ -54,6 +52,7 @@ func newStyles(r *lipgloss.Renderer) styles {
 	}
 }
 
-// doneRule separates the open section from the done one. It is drawn only when
-// both sections have rows, so a list of nothing but open items carries no rule.
-const doneRule = "── done ──"
+// doneLabel is carried by the rule that separates the open section from the
+// done one. The rule is drawn only when both sections have rows, so a list of
+// nothing but open items carries no rule.
+const doneLabel = "done"

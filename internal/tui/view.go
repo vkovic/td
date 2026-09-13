@@ -36,8 +36,8 @@ func (m *Model) View() string {
 	for _, line := range m.notice("warning: ", m.warn) {
 		warn = append(warn, m.styles.warning.Render(line))
 	}
-	// The filter prompt is drawn in the header, over the list's name; only the
-	// add prompt still opens down here.
+	// The filter prompt is drawn on the header's top line; only the add prompt
+	// still opens down here.
 	if m.prompt.open() && m.prompt.kind != promptFilter {
 		label := m.styles.prompt.Render(m.prompt.label + "> ")
 		tail = append(tail, label+m.fitTail(m.prompt.value+"█", ansi.StringWidth(label)))
@@ -98,9 +98,9 @@ func (m *Model) View() string {
 type chromeLine int
 
 const (
-	// lineTop heads the pane: the list's name, or the title filter.
+	// lineTop heads the pane: blank, or the title filter.
 	lineTop chromeLine = iota
-	// lineRule is the rule under lineTop.
+	// lineRule is the rule under lineTop, carrying the list's name.
 	lineRule
 	// lineStatus is the footer's counts and filter echo.
 	lineStatus
@@ -110,7 +110,7 @@ const (
 
 // keptChrome picks which n of the four chrome lines a pane has room for.
 //
-// Normally the header's rule goes first, then the list's name, then the
+// Normally the header's rule goes first, then the top line, then the
 // legend, then the status line: the footer outlasts the header because it is
 // what counts the rows the window hides.
 //
@@ -137,16 +137,18 @@ func (m *Model) titleFiltering() bool {
 	return m.prompt.kind == promptFilter || m.filters.title != ""
 }
 
-// header is the two lines over the list: the name of the list on screen, and a
-// rule under it. The name is stated nowhere else on the pane, so it heads the
-// screen rather than sharing the status line, where it was the first thing
-// elided whenever the counts needed the room.
+// header is the two lines over the list: a top line, and a rule under it that
+// names the list on screen the way the done section's rule names that section.
+// The name is stated nowhere else on the pane, so it heads the screen rather
+// than sharing the status line, where it was the first thing elided whenever
+// the counts needed the room.
 //
-// A title filter takes the name's place, open or kept. It sits where the eye
-// already is when reading the list, rather than on a line above the footer, and
-// what it covers comes back the moment the filter goes.
+// The top line holds a title filter, open or kept. It sits where the eye
+// already is when reading the list, rather than on a line above the footer.
+// With no filter the line is blank rather than gone, so the list does not jump
+// a row each time a filter opens or clears.
 func (m *Model) header() []string {
-	top := m.styles.header.Render(m.fit(m.scopeLabel()))
+	top := ""
 	if m.titleFiltering() {
 		// The query keeps its tail rather than its head: what you are typing
 		// is at the end of it, and an input that stops showing your keystrokes
@@ -160,15 +162,28 @@ func (m *Model) header() []string {
 		}
 		top = label + m.fitTail(query, ansi.StringWidth(label))
 	}
-	// An unknown width has nothing to span, so the rule spans the top line.
-	width := m.width
-	if width <= 0 {
-		width = ansi.StringWidth(top)
-	}
 	return []string{
 		top,
-		m.styles.rule.Render(strings.Repeat("─", width)),
+		m.styles.rule.Render(labelRule(m.scopeLabel(), m.width)),
 	}
+}
+
+// labelRule is a rule carrying a label, "── label ──", run out to width. Both
+// the header's rule and the done section's are drawn by it, so the two read as
+// one kind of line.
+//
+// A zero width is a pane that has not announced itself, and the rule stops at
+// its natural width. A label too wide for the pane is cut from the right with
+// an ellipsis, and the leading dashes stay so the line still reads as a rule.
+func labelRule(label string, width int) string {
+	head := "── " + label + " "
+	if width <= 0 {
+		return head + "──"
+	}
+	if w := ansi.StringWidth(head); w <= width {
+		return head + strings.Repeat("─", width-w)
+	}
+	return ansi.Truncate("── "+label, width, "…")
 }
 
 // scopeLabel names the list on screen: the project or global name for a single
@@ -217,7 +232,7 @@ func (m *Model) body(capacity int) (lines []string, off hidden) {
 		lines = append(lines, "")
 	}
 	if ruled {
-		lines = append(lines, m.styles.rule.Render(doneRule))
+		lines = append(lines, m.styles.rule.Render(labelRule(doneLabel, m.width)))
 	}
 	lines = append(lines, doneReg.lines...)
 	return lines, offscreen(openReg, doneReg, ruled)
