@@ -147,7 +147,7 @@ func TestGateRefusesASecondEpilogue(t *testing.T) {
 	if !m.Busy() {
 		t.Fatal("x did not mark the model busy")
 	}
-	for _, key := range []string{"x", "d", "r", "e", "a"} {
+	for _, key := range []string{"x", "p", "d", "r", "e", "a"} {
 		if cmd := press(m, key); cmd != nil {
 			t.Errorf("%s ran while an epilogue was in flight", key)
 		}
@@ -286,7 +286,7 @@ func TestStatusDoesNotClaimAPushWithoutARemote(t *testing.T) {
 // TestActionsOnAnEmptyListDoNothing: x and d have nothing under the cursor.
 func TestActionsOnAnEmptyListDoNothing(t *testing.T) {
 	m := newModel(t, newStore(t))
-	for _, key := range []string{"x", "d"} {
+	for _, key := range []string{"x", "p", "d"} {
 		if cmd := press(m, key); cmd != nil {
 			t.Errorf("%s on an empty list returned a command", key)
 		}

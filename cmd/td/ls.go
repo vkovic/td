@@ -39,7 +39,7 @@ func newLsCmd(a *app) *cobra.Command {
 		Short:   "List the items in the current list",
 		Long: "ls shows the open items in whichever list applies here, most recently\n" +
 			"updated first. Done items are hidden until --done, and appear after the\n" +
-			"open ones, most recently completed first.",
+			"open ones, most recently completed first. Pinned items head each section.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return a.ls(f)
@@ -165,7 +165,25 @@ func lsTable(entries []store.Entry, f lsFlags) output.Table {
 		if showTags {
 			row = append(row, strings.Join(e.Item.Tags, ","))
 		}
-		table.Rows = append(table.Rows, append(row, e.Item.Title))
+		table.Rows = append(table.Rows, append(row, pinSlot(e.Item)+e.Item.Title))
 	}
 	return table
+}
+
+// pinGlyph marks a pinned item's title, as it does on the pane's row.
+const pinGlyph = "📌"
+
+// pinSlot is what heads a title in the table: the glyph for a pinned item, and
+// the same width of blank for any other, so every title starts in one column.
+//
+// The slot is part of the title cell rather than a column of its own. tabwriter
+// pads by rune count, and the glyph is one rune drawn two columns wide, so as a
+// column it would push every column after it one out of line. TITLE is the last
+// column, and there is nothing after it to push. The glyph is taken as two
+// columns; a terminal that draws it narrower is not compensated for.
+func pinSlot(it *store.Item) string {
+	if it.Pinned {
+		return pinGlyph + " "
+	}
+	return "   "
 }

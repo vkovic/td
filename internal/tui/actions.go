@@ -32,6 +32,25 @@ func (m *Model) toggleDone() tea.Cmd {
 	return m.applied(res)
 }
 
+// togglePin pins the selected item, or unpins it: td pin and td unpin, the way
+// toggleDone is td done and td undo.
+func (m *Model) togglePin() tea.Cmd {
+	e := m.Selected()
+	if e == nil {
+		return nil
+	}
+	res, err := m.tasks.SetPinned(task.PinRequest{
+		Scope:  e.Ref.Scope,
+		IDs:    []string{e.Item.ID},
+		Pinned: !e.Item.Pinned,
+	})
+	if err != nil {
+		m.err = err
+		return nil
+	}
+	return m.applied(res)
+}
+
 // removeItem moves the selected item to the trash, as td rm does.
 //
 // deleted/ is git-ignored, so this is the one action whose result is not in the

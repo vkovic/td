@@ -74,6 +74,9 @@ func writeItem(w io.Writer, e store.Entry) error {
 	if it.DoneAt != nil {
 		fields = append(fields, [2]string{"done", it.DoneAt.Format("2006-01-02 15:04")})
 	}
+	if it.Pinned {
+		fields = append(fields, [2]string{"pinned", "yes"})
+	}
 	for _, f := range []struct{ key, val string }{
 		{"source", it.Source},
 		{"context", it.Context},

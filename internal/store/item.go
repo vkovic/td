@@ -67,6 +67,7 @@ type Item struct {
 	Created           time.Time
 	Updated           time.Time
 	DoneAt            *time.Time
+	Pinned            bool
 	Source            string
 	Context           string
 	ClaudeSessionName string
@@ -214,6 +215,24 @@ var fields = []fieldSpec{
 			return timeNode(*it.DoneAt)
 		},
 		inSkeleton: true,
+	},
+	{
+		// Not in the skeleton: nearly every item is unpinned, and a pinned: line
+		// on all of them would be noise rather than a hint at what a file holds.
+		key: "pinned",
+		decode: func(it *Item, n *yaml.Node) error {
+			if n.Tag == "!!null" || n.Value == "" {
+				it.Pinned = false
+				return nil
+			}
+			return n.Decode(&it.Pinned)
+		},
+		encode: func(it *Item) (*yaml.Node, error) {
+			if !it.Pinned {
+				return nil, nil
+			}
+			return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"}, nil
+		},
 	},
 	{
 		key:    "source",

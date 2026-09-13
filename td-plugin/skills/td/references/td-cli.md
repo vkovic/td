@@ -38,12 +38,14 @@ every other command accepts and ignores them.
 
 ```
 td link [name]
-td add <title>... [-b <md> | --body-file <path>|-] [-t <tag>]... [--due YYYY-MM-DD]
+td add <title>... [-b <md> | --body-file <path>|-] [-t <tag>]... [--due YYYY-MM-DD] [--pin]
 td ls [--done] [--all] [-t <tag>]...
 td show <id>
 td edit <id>... [--title <s>] [-b <md> | --body-file <path>|-] [--append <s>] [-t <tag>]... [--due YYYY-MM-DD|""]
 td done <id>...
 td undo <id>...
+td pin <id>...
+td unpin <id>...
 td rm <id>...
 td restore <id>...
 td bump
@@ -65,11 +67,15 @@ argument. A title cannot begin with `-`: it is parsed as a flag, and `--` does
 not help, since everything after it including the provenance flags is swallowed
 into the title. `-b` takes a markdown body
 inline; `--body-file -` reads it from standard input, which is how a long or
-multi-line body is passed safely. `-t` is repeatable.
+multi-line body is passed safely. `-t` is repeatable. `--pin` creates the item
+already pinned, in the same single commit.
 
-**`td ls`** lists open items, most recently updated first, with `created` and
-then `id` breaking a tie so the order is stable run to run. `--done` includes
-done items, which sort after the open ones, most recently completed first.
+**`td ls`** lists open items, pinned ones first and then most recently updated
+first, with `created` and then `id` breaking a tie so the order is stable run to
+run. Pinned items are ordered among themselves by those same keys. `--done`
+includes done items, which sort after the open ones: pinned first again, then
+most recently completed first. In the table, a pinned title carries 📌 ahead of
+it, and every other title a blank of the same width.
 `--all` merges every scope and adds a scope column. `-t` narrows to items
 carrying **every** tag given, matched case-insensitively, so several `-t` flags
 narrow the list rather than widening it. Aliased as `td list`.
@@ -91,6 +97,12 @@ adds a paragraph to the body instead of replacing it.
 **`td done`** stamps `done_at`, which is what makes an item done; **`td undo`**
 clears it. **`td rm`** moves items to `deleted/`, which is gitignored and never
 purged; **`td restore`** brings them back from `deleted/` or `archived/`.
+
+**`td pin`** pins live items so they head their section, in `td ls` and in the
+TUI; **`td unpin`** clears the pin. Neither changes `updated`. Both are
+idempotent: pinning an item that is already pinned exits 0, reports the item,
+and commits nothing. The pin survives `done`, and a pinned done item is still
+archived after `done_ttl_days`.
 
 **`td bump`**, **`td archive`**, **`td commit`** and **`td push`** each run only
 their own step of the epilogue, on demand. A caller capturing todos has no
@@ -157,7 +169,7 @@ the scope name, `global`, or `all`.
 
 **`td show`** → `{"item": {…}, "epilogue": {…}}`.
 
-**Mutating commands** (`add`, `edit`, `done`, `undo`, `rm`, `restore`) →
+**Mutating commands** (`add`, `edit`, `done`, `undo`, `pin`, `unpin`, `rm`, `restore`) →
 `{"action": …, "items": [item…], "epilogue": {…}}`. `action` is the command's
 name, except that `td rm` reports `"remove"` — and that string is load-bearing
 rather than cosmetic: `cmd/td/mutate.go:24` tests `action != "remove"` to decide
@@ -179,9 +191,10 @@ and no epilogue.
 | `tags` | array of string | `[]` when untagged, never absent |
 | `due` | string | `YYYY-MM-DD`; **absent** when unset |
 | `created` | string | RFC 3339 UTC |
-| `updated` | string | RFC 3339 UTC; the primary `ls` sort key |
+| `updated` | string | RFC 3339 UTC; the primary `ls` sort key after the pin; `pin` and `unpin` leave it unchanged |
 | `done_at` | string or null | `null` when open — this is the done flag of record |
 | `done` | bool | Convenience mirror of `done_at != null` |
+| `pinned` | bool | `true` when pinned; `false` otherwise, never absent |
 | `source` | string | `claude`, `tui`, `cli`; who *created* the item, never who last touched it, since only `td add` writes it; **absent** when unset |
 | `context` | string | the working directory the item was created from, recorded by `td add` and by the pane; absent on items created before td recorded it |
 | `claude_session_name` | string | **absent** when unset |
@@ -194,8 +207,8 @@ and no epilogue.
 Every field marked *absent* is omitted entirely rather than emitted as null or
 `""` — read defensively.
 
-`body` is present on `td show` and on `add`, `edit`, `done`, `undo` and
-`restore`. **Neither `td ls` nor `td rm` returns `body`**; use `td show <id>`
+`body` is present on `td show` and on `add`, `edit`, `done`, `undo`, `pin`,
+`unpin` and `restore`. **Neither `td ls` nor `td rm` returns `body`**; use `td show <id>`
 when the body is needed — `show` finds an item in the trash, so it still works
 after an `rm`.
 

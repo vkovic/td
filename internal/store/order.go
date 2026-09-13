@@ -9,6 +9,11 @@ import (
 // with created breaking a tie; then done items, most recently completed first.
 // Ids break any remaining tie, so the order is stable run to run.
 //
+// Within each section pinned items come first, ordered among themselves by the
+// same rules. The pin ranks below the open/done split and never above it: the
+// pane's windowing assumes every open row precedes every done row, so a pinned
+// done item heads the done section rather than the list.
+//
 // Timestamps are stored to the second, so two items touched in the same second
 // fall through to the id, which is why the tiebreaks matter at all.
 //
@@ -18,6 +23,9 @@ func SortEntries(entries []Entry) {
 		a, b := entries[i].Item, entries[j].Item
 		if a.Done() != b.Done() {
 			return !a.Done() // open items come first
+		}
+		if a.Pinned != b.Pinned {
+			return a.Pinned
 		}
 		if a.Done() {
 			if !a.DoneAt.Equal(*b.DoneAt) {

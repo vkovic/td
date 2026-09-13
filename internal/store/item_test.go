@@ -273,6 +273,7 @@ func TestSkeletonCarriesEveryKeyTdOwns(t *testing.T) {
 		Created:           time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC),
 		Updated:           time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC),
 		DoneAt:            &doneAt,
+		Pinned:            true,
 		Source:            "cli",
 		Context:           "/tmp",
 		ClaudeSessionName: "m5",
@@ -296,6 +297,39 @@ func TestSkeletonCarriesEveryKeyTdOwns(t *testing.T) {
 	}
 	if back.Source != it.Source || back.Context != it.Context || back.ClaudeSessionID != it.ClaudeSessionID {
 		t.Errorf("a skeleton round trip lost provenance: %+v", back)
+	}
+	if !back.Pinned {
+		t.Errorf("a skeleton round trip lost the pin:\n%s", out)
+	}
+}
+
+// TestAHandWrittenPinClearsToAnEmptyKey: unpinning rewrites a file in place, and
+// an in-place rewrite never removes a key — the file goes on saying pinned:, as
+// it goes on saying done_at: once reopened. An item td creates unpinned has no
+// such line to keep, which TestItemTdCreatedStillCarriesTheSkeleton pins.
+func TestAHandWrittenPinClearsToAnEmptyKey(t *testing.T) {
+	it, err := ParseItem([]byte("---\nid: 01hx2b9f\ntitle: Buy milk\npinned: true\n---\n"))
+	if err != nil {
+		t.Fatalf("ParseItem: %v", err)
+	}
+	if !it.Pinned {
+		t.Fatal("pinned: true did not read as pinned")
+	}
+
+	it.Pinned = false
+	out, err := it.Marshal()
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if want := "---\nid: 01hx2b9f\ntitle: Buy milk\npinned:\n---\n"; string(out) != want {
+		t.Errorf("an unpinned hand-written file\n--- got ---\n%s\n--- want ---\n%s", out, want)
+	}
+	back, err := ParseItem(out)
+	if err != nil {
+		t.Fatalf("ParseItem of the rewrite: %v", err)
+	}
+	if back.Pinned {
+		t.Error("an empty pinned: reads back as pinned")
 	}
 }
 

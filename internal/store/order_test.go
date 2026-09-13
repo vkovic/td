@@ -18,6 +18,12 @@ func entry(id string, updated, created time.Time, doneAt *time.Time) Entry {
 	return Entry{Item: &Item{ID: id, Title: id, Updated: updated, Created: created, DoneAt: doneAt}}
 }
 
+// pinned marks an entry pinned, for the cases about the pin tier.
+func pinned(e Entry) Entry {
+	e.Item.Pinned = true
+	return e
+}
+
 // ptr returns a pointer to t, for the done_at field.
 func ptr(t time.Time) *time.Time { return &t }
 
@@ -54,6 +60,30 @@ func TestSortEntries(t *testing.T) {
 				entry("newer", base, base, ptr(ts(5))),
 			},
 			want: "newer,older",
+		},
+		{
+			name: "a pinned open item heads the open section",
+			entries: []Entry{
+				entry("fresh", ts(5), base, nil),
+				pinned(entry("stale", ts(1), base, nil)),
+			},
+			want: "stale,fresh",
+		},
+		{
+			name: "a pinned done item heads the done section",
+			entries: []Entry{
+				entry("newer", base, base, ptr(ts(5))),
+				pinned(entry("older", base, base, ptr(ts(1)))),
+			},
+			want: "older,newer",
+		},
+		{
+			name: "pinned items keep the usual order among themselves",
+			entries: []Entry{
+				pinned(entry("stale", ts(1), base, nil)),
+				pinned(entry("fresh", ts(5), base, nil)),
+			},
+			want: "fresh,stale",
 		},
 		{
 			name: "open items by updated descending",
@@ -103,11 +133,15 @@ func TestSortEntriesFullListing(t *testing.T) {
 	entries := []Entry{
 		entry("done-old", ts(9), ts(9), ptr(ts(2))),
 		entry("open-stale", ts(1), ts(1), nil),
+		pinned(entry("done-pinned", ts(0), ts(0), ptr(ts(1)))),
 		entry("done-new", ts(1), ts(1), ptr(ts(8))),
 		entry("open-fresh", ts(7), ts(7), nil),
+		pinned(entry("open-pinned", ts(0), ts(0), nil)),
 	}
 	SortEntries(entries)
-	if got, want := ids(entries), "open-fresh,open-stale,done-new,done-old"; got != want {
+	// A pinned done item ranks below every open one: the pin orders within a
+	// section and never lifts a row across the rule.
+	if got, want := ids(entries), "open-pinned,open-fresh,open-stale,done-pinned,done-new,done-old"; got != want {
 		t.Errorf("SortEntries ordered %s, want %s", got, want)
 	}
 }

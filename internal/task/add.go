@@ -23,6 +23,10 @@ type AddRequest struct {
 	Due   *store.Date
 	Body  string
 
+	// Pinned files the item already pinned, so td add --pin is one commit
+	// rather than an add followed by a pin.
+	Pinned bool
+
 	// Source, SessionName and SessionID record where the item came from, so an
 	// item raised mid-session can be traced back to what the session was doing.
 	// The CLI fills them from its provenance flags; the TUI names itself.
@@ -53,6 +57,7 @@ func (s *Service) Add(req AddRequest) (Result, error) {
 		Due:               req.Due,
 		Created:           created,
 		Updated:           created,
+		Pinned:            req.Pinned,
 		Source:            req.Source,
 		Context:           store.WorkingContext(),
 		ClaudeSessionName: req.SessionName,

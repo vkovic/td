@@ -53,6 +53,7 @@ type item struct {
 	updated time.Time
 	created time.Time
 	doneAt  *time.Time
+	pinned  bool
 	scope   store.Scope
 }
 
@@ -66,6 +67,7 @@ func save(t *testing.T, s *store.Store, f item) store.Ref {
 		Created: f.created,
 		Updated: f.updated,
 		DoneAt:  f.doneAt,
+		Pinned:  f.pinned,
 	}
 	if it.Created.IsZero() {
 		it.Created = f.updated
@@ -1102,6 +1104,7 @@ func TestNoRowEverExceedsTheWidth(t *testing.T) {
 	doneAt := ago(1)
 	save(t, s, item{id: "bbb", title: long, updated: ago(3), doneAt: &doneAt})
 	save(t, s, item{id: "ccc", title: long, updated: ago(3), scope: store.Scope("a-rather-long-project-name")})
+	save(t, s, item{id: "ddd", title: long, tags: []string{"cli"}, updated: ago(4), pinned: true})
 
 	m := newModel(t, s)
 	for _, width := range []int{200, 80, 60, 50, 40, 30, 20, 10} {
@@ -1152,8 +1155,10 @@ func TestNarrowPaneDropsCellsBeforeTheTitleDisappears(t *testing.T) {
 	}
 	// Whatever survives keeps its own place, so a narrowing pane loses cells
 	// from a stable layout rather than rearranging what is left.
-	if got := row(30); !strings.HasSuffix(strings.TrimSpace(got), "due 2026-09-30") {
-		t.Errorf("at 30 the due date should still trail the title: %q", got)
+	// 33 is the narrowest the due date survives at: the pin slot every row
+	// reserves costs three columns.
+	if got := row(33); !strings.HasSuffix(strings.TrimSpace(got), "due 2026-09-30") {
+		t.Errorf("at 33 the due date should still trail the title: %q", got)
 	}
 	if got := row(20); !strings.Contains(got, "wire") {
 		t.Errorf("at 20 the row should still show what the item is: %q", got)

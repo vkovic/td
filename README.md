@@ -104,6 +104,15 @@ Those counts are what makes the window honest, so a line too wide for the pane
 drops the item total first, then elides the list's name, and only then gives up
 its own tail.
 
+`p` pins the selected item and `p` again unpins it. A pinned item heads its
+section with 📌 ahead of its title: first among the open items, and first among
+the done ones once it is finished. Pinned items keep the usual order among
+themselves. A pin does not touch `updated`, so the row's age stays what it was.
+Every row keeps the pin's two columns open whether it is pinned or not, so the
+titles line up. A pinned done item is still swept into the archive after
+`done_ttl_days`. `td pin`, `td unpin` and `td add --pin` do the same from a
+shell.
+
 ### Keys
 
 | Key        | Does                                                   |
@@ -113,6 +122,7 @@ its own tail.
 | `a`        | add an item, then open it in `$EDITOR`                 |
 | `e` / `⏎`  | open the selected item in `$EDITOR`                    |
 | `x`        | mark the selected item done, or reopen it              |
+| `p`        | pin the selected item to the top, or unpin it          |
 | `d`        | move the selected item to the trash                    |
 | `/`        | filter by title                                        |
 | `t`        | cycle the tag filter                                   |
@@ -133,8 +143,8 @@ window shares them — a whole store's listing can read `64q`. The tail turns ov
 every millisecond, so it is the part that tells two items apart.
 
 ```
-❯ [ ] s3r fuzzy search                              #cli  3d
-  [ ] sxx ids for items for quick reference                5d
+❯ [ ] s3r    fuzzy search                              #cli  3d
+  [ ] sxx    ids for items for quick reference                5d
 ```
 
 Those three characters are what you type back. Every command that takes an id —
@@ -161,9 +171,10 @@ in it.
 field editing: `e` opens the item's markdown file, and whatever you leave behind
 is the item. Quitting the editor without saving changes nothing.
 
-`x`, `d`, `e` and `a` each end in the same tail the matching CLI command runs —
-record hand edits, sweep the archive, commit, push — and honour `auto_commit`
-and `auto_push` exactly as `td done`, `td rm`, `td edit` and `td add` do. `r` is
+`x`, `p`, `d`, `e` and `a` each end in the same tail the matching CLI command
+runs — record hand edits, sweep the archive, commit, push — and honour
+`auto_commit` and `auto_push` exactly as `td done`, `td pin`, `td rm`, `td edit`
+and `td add` do. `r` is
 the exception: asking for the tail outright overrides both settings, the way
 `td commit` commits with `auto_commit` off.
 

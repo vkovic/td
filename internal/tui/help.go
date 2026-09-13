@@ -51,6 +51,9 @@ func keyMap() []binding {
 			run: func(m *Model) tea.Cmd { return m.gate(m.editSelected) }},
 		{keys: []string{"x"}, help: "mark the selected item done, or reopen it", short: "done", rank: 5,
 			run: func(m *Model) tea.Cmd { return m.gate(m.toggleDone) }},
+		// No short: the legend has no room to spare, and the overlay lists it.
+		{keys: []string{"p"}, help: "pin the selected item to the top, or unpin it",
+			run: func(m *Model) tea.Cmd { return m.gate(m.togglePin) }},
 		{keys: []string{"d"}, help: "move the selected item to the trash", short: "delete", rank: 8,
 			run: func(m *Model) tea.Cmd { return m.gate(m.removeItem) }},
 

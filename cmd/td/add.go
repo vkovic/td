@@ -18,6 +18,7 @@ type addFlags struct {
 	bodyFile string
 	tags     []string
 	due      string
+	pin      bool
 }
 
 // newAddCmd builds td add.
@@ -38,6 +39,7 @@ func newAddCmd(a *app) *cobra.Command {
 	cmd.Flags().StringVar(&f.bodyFile, "body-file", "", "read the body from a file, or - for standard input")
 	cmd.Flags().StringArrayVarP(&f.tags, "tag", "t", nil, "tag the item, repeatable")
 	cmd.Flags().StringVar(&f.due, "due", "", "due date, as YYYY-MM-DD")
+	cmd.Flags().BoolVar(&f.pin, "pin", false, "pin the item to the top of the list")
 	return cmd
 }
 
@@ -66,6 +68,7 @@ func (a *app) add(title string, f addFlags) error {
 		Title:       title,
 		Tags:        cleanTags(f.tags),
 		Body:        body,
+		Pinned:      f.pin,
 		Source:      p.Source,
 		SessionName: p.SessionName,
 		SessionID:   p.SessionID,

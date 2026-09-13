@@ -19,6 +19,7 @@ type itemView struct {
 	Updated           time.Time  `json:"updated"`
 	DoneAt            *time.Time `json:"done_at"`
 	Done              bool       `json:"done"`
+	Pinned            bool       `json:"pinned"`
 	Source            string     `json:"source,omitempty"`
 	Context           string     `json:"context,omitempty"`
 	ClaudeSessionName string     `json:"claude_session_name,omitempty"`
@@ -56,6 +57,7 @@ func newItemView(e store.Entry, withBody bool) itemView {
 		Updated:           it.Updated,
 		DoneAt:            it.DoneAt,
 		Done:              it.Done(),
+		Pinned:            it.Pinned,
 		Source:            it.Source,
 		Context:           it.Context,
 		ClaudeSessionName: it.ClaudeSessionName,

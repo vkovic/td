@@ -14,6 +14,15 @@ import (
 // says nothing that tells it apart from the row above it.
 const minTitle = 8
 
+// pinGlyph marks a pinned row, directly ahead of its title.
+const pinGlyph = "📌"
+
+// pinBlank holds the glyph's slot open on a row that is not pinned, so titles
+// start in one column whichever rows are pinned. Measured the way spent measures
+// every other cell: the glyph is taken as two columns, and a terminal or tmux
+// font that draws it narrower is not compensated for.
+var pinBlank = strings.Repeat(" ", ansi.StringWidth(pinGlyph))
+
 // cell is one of the pieces that follow the title, with what it costs to lose.
 // A pane too narrow for all of them drops whole cells, highest cost last to
 // survive, rather than letting the row overrun and be clipped by the terminal.
@@ -25,9 +34,11 @@ type cell struct {
 	drop int
 }
 
-// row renders one item: the cursor, a done marker, the title, its tags, its due
-// date and how long ago it was updated. Empty fields take no space at all, so a
-// list with no tags carries no gap where the tags would be.
+// row renders one item: the cursor, a done marker, the pin slot, the title, its
+// tags, its due date and how long ago it was updated. Empty fields take no space
+// at all, so a list with no tags carries no gap where the tags would be. The pin
+// slot is the exception, blank rather than absent, because it sits ahead of the
+// title and a gap there would stagger the titles.
 //
 // The title is the first cell to give way, and below a stub of a title the
 // trailing cells start going too. Nothing is left to the terminal to clip: a
@@ -58,6 +69,11 @@ func (m *Model) row(e store.Entry, selected bool) string {
 	if m.view.merged {
 		before = append(before, m.styles.scope.Render(e.Ref.Scope.String()))
 	}
+	pin := pinBlank
+	if e.Item.Pinned {
+		pin = pinGlyph
+	}
+	before = append(before, pin)
 
 	var after []cell
 	if len(e.Item.Tags) > 0 {

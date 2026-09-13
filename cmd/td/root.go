@@ -174,6 +174,8 @@ func newRootCmdIO(stdout, stderr io.Writer, stdin io.Reader, opts ...func(*app))
 		newEditCmd(a),
 		newDoneCmd(a),
 		newUndoCmd(a),
+		newPinCmd(a),
+		newUnpinCmd(a),
 		newRemoveCmd(a),
 		newRestoreCmd(a),
 		newLsCmd(a),

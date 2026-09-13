@@ -1,7 +1,7 @@
 ---
 name: td
-description: Todo capture and management with the td CLI. Fires on /td, "todo", "add a todo", "note that for later", "put it on the list", "add what we discussed", "what's on my list", "mark X done", "drop that todo".
-argument-hint: "[free text: <new item> | ls | done <title> | rm <title>]"
+description: Todo capture and management with the td CLI. Fires on /td, "todo", "add a todo", "note that for later", "put it on the list", "add what we discussed", "what's on my list", "mark X done", "pin X", "drop that todo".
+argument-hint: "[free text: <new item> | ls | done <title> | pin <title> | rm <title>]"
 allowed-tools: Bash(td:*)
 ---
 
@@ -19,10 +19,11 @@ Run every command from the current directory as-is: the `.td` marker decides pro
 | what is open, what is on the list | `td ls`; `--done` when done items are wanted, `--all` for every scope, `-t <tag>` to narrow |
 | the full text of one item | `td show <id>` |
 | an item is done / reopen it / drop it / bring it back / change it | `td done` / `td undo` / `td rm` / `td restore` / `td edit`, with the id from step 2 |
+| pin an item, keep it at the top / unpin it | `td pin` / `td unpin`, with the id from step 2; `td add --pin` pins a new item |
 
 ## 2. Resolve a title to an id
 
-`show`, `done`, `undo`, `rm`, `restore` and `edit` take ids only. For an item the user named in prose:
+`show`, `done`, `undo`, `pin`, `unpin`, `rm`, `restore` and `edit` take ids only. For an item the user named in prose:
 
 1. `td ls --json`, adding `--done` when the item may be closed and `--all` when it may sit in another scope.
 2. Match the user's words against `title` in `items`. One match → use its `id`. Several → ask which, listing them with ids. None → say so and stop.
